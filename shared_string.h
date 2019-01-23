@@ -663,6 +663,12 @@ shared_string make_shared_wstring(TT&&... vals)
 
 namespace std
 {
+#ifdef SHARED_STRING_NAMESPACE
+#define NS SHARED_STRING_NAMESPACE::
+#else 
+#define NS
+#endif
+
 template <typename TChar, typename Traits>
-struct hash<SHARED_STRING_NAMESPACE::basic_shared_string<TChar, Traits>> : hash<typename SHARED_STRING_NAMESPACE::basic_shared_string<TChar, Traits>::string_view> {};
+struct hash<NS::basic_shared_string<TChar, Traits>> : hash<typename NS::basic_shared_string<TChar, Traits>::string_view> {};
 }
