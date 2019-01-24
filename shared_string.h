@@ -201,8 +201,7 @@ struct CSharedLargeStr
 	}
 
 	CRefStr *m_refs;
-	value_type *m_str;
-	size_type m_sz;
+	value_type *m_str;size_type m_sz;
 };
 
 
