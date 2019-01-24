@@ -1,2 +1,3 @@
 # shared_string
-C++ shared_string class implementation
+C++  implementation of shared_string class with small string optimization. 
+
