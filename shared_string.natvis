@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+<Type Name="basic_shared_string&lt;*&gt;">
+  <DisplayString Condition="m_small.m_sz &amp; 0x01">{m_small.m_str}s</DisplayString>
+  <DisplayString Condition="!(m_small.m_sz &amp; 0x01)">{m_large.m_str}S</DisplayString>
+  <Expand>
+    <Item Name="m_refs" Condition="m_small.m_sz &amp; 0x01" ExcludeView="simple">0</Item>
+    <Item Name="m_sz" Condition="m_small.m_sz &amp; 0x01" ExcludeView="simple">m_small.m_sz &gt;&gt; 0x1</Item>
+    <Item Name="m_str" Condition="m_small.m_sz &amp; 0x01" ExcludeView="simple">m_small.m_str</Item>
+
+    <Item Name="m_refs" Condition="!(m_small.m_sz &amp; 0x01)" ExcludeView="simple">m_large.m_refs->m_cnt</Item>
+    <Item Name="m_sz" Condition="!(m_small.m_sz &amp; 0x01)" ExcludeView="simple">m_large.m_sz</Item>
+    <Item Name="m_str" Condition="!(m_small.m_sz &amp; 0x01)" ExcludeView="simple">m_large.m_str</Item>
+  </Expand>
+</Type>
+
+</AutoVisualizer>

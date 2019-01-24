@@ -64,7 +64,7 @@ struct CSmallStringOpt
 		{
 			SetEmpty();
 			auto p = m_large.Init(sz);
-			if (IsSmall())
+			if (is_small())
 			{
 				m_large.Destroy();
 				SetEmpty();
@@ -78,7 +78,7 @@ struct CSmallStringOpt
 		}
 	}
 
-	constexpr bool IsSmall() const noexcept
+	[[nodiscard]] constexpr bool is_small() const noexcept
 	{
 		return m_mask & SmallMask;
 	}
@@ -93,7 +93,7 @@ struct CSmallStringOpt
 		return sz < SmallSize;
 	}
 
-	constexpr bool empty() const noexcept
+	[[nodiscard]] constexpr bool empty() const noexcept
 	{
 		return m_mask == SmallMask;
 	}
@@ -205,6 +205,7 @@ struct CSharedLargeStr
 	size_type m_sz;
 };
 
+
 template <typename TChar = char, typename Traits = std::char_traits<TChar>>
 class basic_shared_string
 : protected CSmallStringOpt<CSharedLargeStr<TChar>>
@@ -217,11 +218,6 @@ protected:
 	
 	using TSmallStringOpt::SetEmpty;
 	using TSmallStringOpt::ShouldBeSmall;
-
-#ifdef SHARED_STRING_TEST
-public:
-#endif
-	using TSmallStringOpt::IsSmall;
 
 public:
 	using traits_type = Traits;
@@ -246,6 +242,7 @@ public:
 	static constexpr size_type npos = string_view::npos;
 
 	using TSmallStringOpt::empty;
+	using TSmallStringOpt::is_small;
 
 	constexpr basic_shared_string() noexcept
 	: TSmallStringOpt(nullptr)
@@ -282,6 +279,13 @@ public:
 		traits_type::assign(m_small.m_str[1], 0);
 	}
 
+	constexpr basic_shared_string(size_t n, value_type ch) noexcept
+	{
+		auto p = this->Init(n);
+		Traits::assign(p, n, ch);
+		Traits::assign(p[n], 0);
+	}
+
 	template <typename TFunc, typename... TT, typename = std::enable_if_t<std::is_invocable_v<TFunc, TT..., value_type  *, size_type>>>
 	constexpr basic_shared_string(const size_t sz, TFunc &&func, TT&&... args) 
 	{
@@ -294,7 +298,7 @@ public:
 
 		if (sz2 < sz)
 		{
-			if (IsSmall())
+			if (is_small())
 				m_small.resize(sz2);
 			else
 				m_large.m_sz = sz2;
@@ -310,7 +314,7 @@ public:
 
 	constexpr basic_shared_string(const basic_shared_string &src) noexcept
 	{
-		if (src.IsSmall())
+		if (src.is_small())
 			m_small = src.m_small;
 		else if (src.m_large.m_refs->Capture())
 			m_large = src.m_large;
@@ -331,7 +335,7 @@ public:
 
 	constexpr string_view sv() const noexcept
 	{
-		return IsSmall()? string_view(m_small.m_str, m_small.size()): string_view(m_large.m_str, m_large.size());
+		return is_small()? string_view(m_small.m_str, m_small.size()): string_view(m_large.m_str, m_large.size());
 	}
 
 	constexpr const_pointer c_str() const noexcept
@@ -341,12 +345,12 @@ public:
 	
 	constexpr const_pointer data() const noexcept
 	{
-		return IsSmall()? m_small.m_str: m_large.m_str;
+		return is_small()? m_small.m_str: m_large.m_str;
 	}
 
 	constexpr size_t size() const noexcept
 	{
-		return IsSmall()? m_small.size(): m_large.size();
+		return is_small()? m_small.size(): m_large.size();
 	}
 		
 	constexpr size_type length() const noexcept
@@ -369,7 +373,7 @@ public:
 		if (this == &src)
 			return *this;
 
-		if (src.IsSmall())
+		if (src.is_small())
 		{
 			_reset();
 			m_small = src.m_small;
@@ -423,7 +427,7 @@ public:
 
 	constexpr auto use_count() const noexcept
 	{
-		return IsSmall()? 0: m_large.use_count();
+		return is_small()? 0: m_large.use_count();
 	}
 
 #define SHARED_STRING_SV(name) template <typename... TT> \
@@ -507,7 +511,7 @@ protected:
 
 	constexpr void _reset() noexcept
 	{
-		if (!IsSmall())
+		if (!is_small())
 			m_large.Release();
 	}
 
@@ -568,6 +572,9 @@ struct repeat_char
 };
 
 template <typename TChar> repeat_char(size_t, TChar) -> repeat_char<TChar>;
+
+template <typename TString, typename T, typename = std::void_t<>> struct CanAppend: std::false_type {};
+template <typename TString, typename T> struct CanAppend<TString, T, std::void_t<decltype(std::declval<TString>().append(std::declval<T>()))>>: std::true_type{};
 
 template <typename TChar, typename Traits = std::char_traits<TChar>, typename = void>
 struct CStringMaker
@@ -632,6 +639,12 @@ struct CStringMaker
 		s.append(val.first, val.second);
 	}
 
+	template <typename TString, typename = std::enable_if_t<!CanAppend<TString, value_type>::value>>
+	static constexpr void Append(TString &s, value_type val) noexcept(noexcept(s.append(1, val)))
+	{
+		s.append(1, val);
+	}
+	
 	template <typename TString>
 	static constexpr void Append(TString &s) noexcept
 	{
@@ -651,10 +664,26 @@ TString make_shared_string(TT&&... vals)
 	return TString(std::in_place_type<TMaker>, std::forward<TT>(vals)...);
 }
 
-template <typename... TT>
+template <typename TString = shared_wstring, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
 shared_string make_shared_wstring(TT&&... vals)
 {
-	return make_shared_string<shared_wstring>(std::forward<TT>(vals)...);
+	return make_shared_string<TString, TMaker>(std::forward<TT>(vals)...);
+}
+
+template <typename TString = std::string, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
+TString make_string(TT&&... vals)
+{
+	TMaker::VerifyType(vals...);
+	TString res;
+	res.reserve((TMaker::size(vals) + ...));
+	TMaker::Append(res, std::forward<TT>(vals)...);
+	return res;
+}
+
+template <typename TString = std::wstring, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
+shared_string make_wstring(TT&&... vals)
+{
+	return make_string<TString, TMaker>(std::forward<TT>(vals)...);
 }
 
 #ifdef SHARED_STRING_NAMESPACE
