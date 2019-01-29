@@ -6,15 +6,21 @@
 
 int main()
 {
-	std::string s1 = "hello";
-	std::string_view s2 = "world";
+	std::string src1 = "hello";
+	std::string_view src2 = "world";
 	
-	shared_string s = make_shared_string(s1, ' ', s2, "!!!");
-	std::cout << "shared string: " << s << std::endl;
+	std::cout << "shared_string(std::string): " << shared_string(src1) << std::endl;
+	std::cout << "shared_string(std::string_view): " << shared_string(src2) << std::endl;
+	std::cout << "shared_string(size_t, char): " << shared_string(10, '!') << std::endl;
+	std::cout << "shared_string(char): " << shared_string('!') << std::endl;
+
+
+	shared_string s = make_shared_string(src1, ' ', src2, repeat_char(2, '!'), '!');
+	std::cout << "make_shared_string: " << s << std::endl;
 
 	cow_string cow = s;
-	cow.erase(s1.size(), s2.size() + 1);
-	std::cout << "COW string: " << cow << std::endl;
+	cow.erase(src1.size(), src2.size() + 1);
+	std::cout << "cow_string: " << cow << std::endl;
 
 	while (!_kbhit());
 	return 0;
