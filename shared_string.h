@@ -8,7 +8,8 @@
  * Copyright (c) 2019 Oleg Melnikov https://github.com/oleg-m1973/shared_string
  *
  * License: MIT License
-******/
+ *
+ *****/
 
 #pragma once
 
@@ -696,15 +697,21 @@ struct CStringMaker
 };
 
 template <typename TString = shared_string, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
-TString make_shared_string(TT&&... vals)
+TString _make_shared_string(TT&&... vals)
 {
 	return TString(std::in_place_type<TMaker>, std::forward<TT>(vals)...);
 }
 
-template <typename TString = shared_wstring, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
-shared_string make_shared_wstring(TT&&... vals)
+template <typename... TT>
+shared_string make_shared_string(TT&&... vals)
 {
-	return make_shared_string<TString, TMaker>(std::forward<TT>(vals)...);
+	return _make_shared_string<shared_string>(TT&&... vals)
+}
+
+template <typename... TT>
+shared_wstring make_shared_wstring(TT&&... vals)
+{
+	return _make_shared_string<shared_wstring>(TT&&... vals)
 }
 
 template <typename TString = std::string, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
