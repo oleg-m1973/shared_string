@@ -1,3 +1,7 @@
+// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
+
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 /******
  * basic_shared_string
  *
@@ -32,7 +36,7 @@ struct CSmallStringOpt
 	using TSmallSize = std::make_unsigned_t<value_type>;
 	using TSmallMask = uint64_t;
 
-	static const size_type SmallSize = (sizeof(TLargeStr) - sizeof(TSmallSize)) / sizeof(value_type);
+	static const size_type sso_size = (sizeof(TLargeStr) - sizeof(TSmallSize)) / sizeof(value_type);
 	static const TSmallSize ZeroSmallSize = 0x01;
 	static const TSmallMask SmallMask = 0x01;
 
@@ -90,7 +94,7 @@ struct CSmallStringOpt
 
 	static constexpr bool ShouldBeSmall(size_type sz) noexcept
 	{
-		return sz < SmallSize;
+		return sz < sso_size;
 	}
 
 	[[nodiscard]] constexpr bool empty() const noexcept
@@ -113,7 +117,7 @@ struct CSmallStringOpt
 		}
 
 		TSmallSize m_sz;
-		value_type m_str[SmallSize];
+		value_type m_str[sso_size];
 	};
 	
 	union
@@ -240,6 +244,7 @@ public:
 
 	static constexpr size_type npos = string_view::npos;
 
+	using TSmallStringOpt::sso_size;
 	using TSmallStringOpt::empty;
 	using TSmallStringOpt::is_small;
 
@@ -253,32 +258,32 @@ public:
 	{
 	}
 
-	constexpr basic_shared_string(const value_type *psz, size_type sz)
+	explicit constexpr basic_shared_string(const value_type *psz, size_type sz)
 	{
 		auto p = this->Init(sz);
 		traits_type::copy(p, psz, sz);
 		traits_type::assign(p[sz], 0);
 	}
 
-	constexpr basic_shared_string(const string_view &src)
+	explicit constexpr basic_shared_string(const string_view &src)
 	: basic_shared_string(src.data(), src.size())
 	{
 	}
 
 	template <typename T>
-	constexpr basic_shared_string(const std::basic_string<value_type, traits_type, T> &src)
+	explicit constexpr basic_shared_string(const std::basic_string<value_type, traits_type, T> &src)
 	: basic_shared_string(src.data(), src.size())
 	{
 	}
 
-	constexpr basic_shared_string(value_type ch) noexcept
+	explicit constexpr basic_shared_string(value_type ch) noexcept
 	{
 		m_small.resize(1);
 		traits_type::assign(m_small.m_str[0], ch);
 		traits_type::assign(m_small.m_str[1], 0);
 	}
 
-	constexpr basic_shared_string(size_t n, value_type ch) noexcept
+	explicit constexpr basic_shared_string(size_t n, value_type ch) noexcept
 	{
 		auto p = this->Init(n);
 		Traits::assign(p, n, ch);
@@ -369,24 +374,9 @@ public:
 
 	constexpr basic_shared_string &operator =(const basic_shared_string &src) noexcept
 	{
-		if (this == &src)
-			return *this;
+		if (this != &src)
+			basic_shared_string(src).swap(*this);
 
-		if (src.is_small())
-		{
-			_reset();
-			m_small = src.m_small;
-		}
-		else if (src.m_large.m_refs == m_large.m_refs)
-			return *this;
-		else
-		{
-			_reset();
-			if (src.m_large.m_refs->Capture())
-				m_large = src.m_large;
-			else
-				SetEmpty();
-		}
 		return *this;
 	}
 
@@ -429,44 +419,44 @@ public:
 		return is_small()? 0: m_large.use_count();
 	}
 
-#define SHARED_STRING_SV(name) template <typename... TT> \
+#define SHARED_STRING_FUNCS(name) template <typename... TT> \
 	constexpr auto name(TT&&... args) const noexcept(noexcept(sv().name(std::forward<TT>(args)...))) \
 	{return sv().name(std::forward<TT>(args)...);}
 
-	SHARED_STRING_SV(at)
-	SHARED_STRING_SV(back)
-	SHARED_STRING_SV(begin)
-	SHARED_STRING_SV(cbegin)
-	SHARED_STRING_SV(end)
-	SHARED_STRING_SV(cend)
-	SHARED_STRING_SV(rbegin)
-	SHARED_STRING_SV(crbegin)
-	SHARED_STRING_SV(rend)
-	SHARED_STRING_SV(crend)
-	SHARED_STRING_SV(copy)
-	SHARED_STRING_SV(substr)
-	SHARED_STRING_SV(compare)
-	SHARED_STRING_SV(starts_with)
-	SHARED_STRING_SV(ends_with)
-	SHARED_STRING_SV(find)
-	SHARED_STRING_SV(rfind)
-	SHARED_STRING_SV(find_first_of)
-	SHARED_STRING_SV(find_last_of)
-	SHARED_STRING_SV(find_first_not_of)
-	SHARED_STRING_SV(find_last_not_of)
+	SHARED_STRING_FUNCS(at)
+	SHARED_STRING_FUNCS(back)
+	SHARED_STRING_FUNCS(begin)
+	SHARED_STRING_FUNCS(cbegin)
+	SHARED_STRING_FUNCS(end)
+	SHARED_STRING_FUNCS(cend)
+	SHARED_STRING_FUNCS(rbegin)
+	SHARED_STRING_FUNCS(crbegin)
+	SHARED_STRING_FUNCS(rend)
+	SHARED_STRING_FUNCS(crend)
+	SHARED_STRING_FUNCS(copy)
+	SHARED_STRING_FUNCS(substr)
+	SHARED_STRING_FUNCS(compare)
+	SHARED_STRING_FUNCS(starts_with)
+	SHARED_STRING_FUNCS(ends_with)
+	SHARED_STRING_FUNCS(find)
+	SHARED_STRING_FUNCS(rfind)
+	SHARED_STRING_FUNCS(find_first_of)
+	SHARED_STRING_FUNCS(find_last_of)
+	SHARED_STRING_FUNCS(find_first_not_of)
+	SHARED_STRING_FUNCS(find_last_not_of)
 
-#undef SHARED_STRING_SV
+#undef SHARED_STRING_FUNCS
 
-#define SHARED_STRING_CMP(op) template <typename T> constexpr bool operator op(const T &s) const noexcept {return compare(s) op 0;} 
-	
-	SHARED_STRING_CMP(==)
-	SHARED_STRING_CMP(!=)
-	SHARED_STRING_CMP(<=)
-	SHARED_STRING_CMP(>=)
-	SHARED_STRING_CMP(<)
-	SHARED_STRING_CMP(>)
+	constexpr std::pair<string_view, string_view> substr2(size_type pos1, size_type end1, size_type pos2, size_type end2) const
+	{
+		const auto s = this->sv();
+		return {s.substr(pos1, end1), s.substr(pos2, end2)};
+	}
 
-#undef SHARED_STRING_CMP
+	constexpr std::pair<string_view, string_view> substr2(size_type pos) const
+	{
+		return substr2(0, pos, pos, npos);
+	}
 protected:
 	struct CAppendHelper
 	{
@@ -518,7 +508,55 @@ protected:
 	{
 		std::swap(m_large, src.m_large);
 	}
+
+	constexpr value_type *data() noexcept
+	{
+		return is_small()? m_small.m_str: m_large.m_str;
+	}
+
+	constexpr value_type *small_data() noexcept
+	{
+		return m_small.m_str;
+	}
+
+	constexpr size_type small_size() const noexcept
+	{
+		return m_small.size();
+	}
+
+	constexpr value_type *large_data() noexcept
+	{
+		return m_large.m_str;
+	}
+
+	constexpr size_type large_size() const noexcept
+	{
+		return m_large.size();
+	}
+
 };
+
+#define SHARED_STRING_CMP \
+	TS_ITEM(==, ==) \
+	TS_ITEM(!=, !=) \
+	TS_ITEM(<=, >=) \
+	TS_ITEM(>=, <=) \
+	TS_ITEM(<, >) \
+	TS_ITEM(>, <) \
+
+#define TS_ITEM(op, nop) \
+	template <typename TChar, typename Traits, typename T> constexpr bool operator op(const basic_shared_string<TChar, Traits> &s1, const T &s2) noexcept {return s1.compare(s2) op 0;} \
+	template <typename TChar, typename Traits, typename T, typename = std::enable_if_t<!std::is_base_of_v<basic_shared_string<TChar, Traits>, T> && !std::is_same_v<basic_shared_string<TChar, Traits>, T>>> \
+	constexpr bool operator op(const T &s1, const basic_shared_string<TChar, Traits> &s2) noexcept {return s2.compare(s1) nop 0;} \
+	
+SHARED_STRING_CMP
+
+#undef TS_ITEM
+
+template <typename TChar, typename Traits> std::basic_ostream<TChar, Traits> &operator<<(std::basic_ostream<TChar, Traits>& stm, basic_shared_string <TChar, Traits> s)
+{
+	return stm << s.sv();
+}
 
 using shared_string = basic_shared_string<char>;
 using shared_wstring = basic_shared_string<wchar_t>;
@@ -685,18 +723,17 @@ shared_string make_wstring(TT&&... vals)
 	return make_string<TString, TMaker>(std::forward<TT>(vals)...);
 }
 
+
 #ifdef SHARED_STRING_NAMESPACE
 } //namespace SHARED_STRING_NAMESPACE
+#define NS(name) SHARED_STRING_NAMESPACE::name
+#else 
+#define NS(name) name
 #endif 
 
 namespace std
 {
-#ifdef SHARED_STRING_NAMESPACE
-#define NS SHARED_STRING_NAMESPACE::
-#else 
-#define NS
-#endif
-
 template <typename TChar, typename Traits>
-struct hash<NS::basic_shared_string<TChar, Traits>> : hash<typename NS::basic_shared_string<TChar, Traits>::string_view> {};
+struct hash<NS(basic_shared_string)<TChar, Traits>> : hash<typename NS(basic_shared_string)<TChar, Traits>::string_view> {};
 }
+#undef NS
