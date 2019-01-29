@@ -14,6 +14,13 @@ int main()
 	std::cout << "shared_string(size_t, char): " << shared_string(10, '!') << std::endl;
 	std::cout << "shared_string(char): " << shared_string('!') << std::endl;
 
+	std::cout << "shared_string(size_t, size_t(char *, size_t)): " << shared_string(10, [](char *dst, size_t sz)
+	{
+		for (size_t i = 0; i < sz; ++i, ++dst)
+			*dst = '0' + char(i);
+		
+		return sz;
+	}) << std::endl;
 
 	shared_string s = make_shared_string(src1, ' ', src2, repeat_char(2, '!'), '!');
 	std::cout << "make_shared_string: " << s << std::endl;
