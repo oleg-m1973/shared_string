@@ -164,7 +164,7 @@ protected:
 
 		TEST_VERIFY(CreateString<TString>(arg) == s, L"Constuctor");
 			
-		TEST_VERIFY(make_shared_string<TString>(arg) == s, L"make_shared_string", typeid(T).name());
+		TEST_VERIFY(_make_shared_string<TString>(arg) == s, L"make_shared_string", typeid(T).name());
 
 		if constexpr(sizeof...(args) != 0)
 			TestConstruct<TString>(args...);
@@ -210,9 +210,9 @@ protected:
 		auto to_string = [&mst](int i)
 		{
 			if constexpr(std::is_same_v<char, TString::value_type>)
-				return make_shared_string<TString>(mst, std::to_string(i));
+				return _make_shared_string<TString>(mst, std::to_string(i));
 			else 
-				return make_shared_string<TString>(mst, std::to_wstring(i));
+				return _make_shared_string<TString>(mst, std::to_wstring(i));
 		};
 		
 		items.emplace(to_string(0));
@@ -302,7 +302,7 @@ protected:
 
 		const size_t sz = (TMaker::size(args) + ...);
 			   
-		auto s = make_shared_string<TString>(args...);
+		auto s = _make_shared_string<TString>(args...);
 
 		TEST_VERIFY(std::basic_string<TChar>(s) == s, "std::string()");
 		TEST_VERIFY((std::basic_string<TChar>() = s) == s, "std::string() assign");
