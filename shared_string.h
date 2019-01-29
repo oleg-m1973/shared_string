@@ -1,7 +1,3 @@
-// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
-
-// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /******
  * basic_shared_string
  *
@@ -130,7 +126,7 @@ struct CSmallStringOpt
 
 	static_assert(sizeof(m_small) <= sizeof(m_large));
 	static_assert(sizeof(m_mask) <= sizeof(m_large));
-	static_assert(sizeof(m_mask) >= sizeof(TSmallSize) + sizeof(value_type));
+	static_assert(sizeof(m_mask) >= (sizeof(TSmallSize) + sizeof(value_type)));
 };
 
 class CRefCounter
@@ -206,7 +202,8 @@ struct CSharedLargeStr
 	}
 
 	CRefStr *m_refs;
-	value_type *m_str;size_type m_sz;
+	value_type *m_str;
+	size_type m_sz;
 };
 
 
@@ -554,7 +551,7 @@ SHARED_STRING_CMP
 
 #undef TS_ITEM
 
-template <typename TChar, typename Traits> std::basic_ostream<TChar, Traits> &operator<<(std::basic_ostream<TChar, Traits>& stm, basic_shared_string <TChar, Traits> s)
+template <typename TChar, typename Traits> std::basic_ostream<TChar, Traits> &operator <<(std::basic_ostream<TChar, Traits>& stm, basic_shared_string <TChar, Traits> s)
 {
 	return stm << s.sv();
 }
