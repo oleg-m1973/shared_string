@@ -705,13 +705,13 @@ TString _make_shared_string(TT&&... vals)
 template <typename... TT>
 shared_string make_shared_string(TT&&... vals)
 {
-	return _make_shared_string<shared_string>(TT&&... vals)
+	return _make_shared_string<shared_string>(std::forward<TT>(vals)...);
 }
 
 template <typename... TT>
 shared_wstring make_shared_wstring(TT&&... vals)
 {
-	return _make_shared_string<shared_wstring>(TT&&... vals)
+	return _make_shared_string<shared_wstring>(std::forward<TT>(vals)...);
 }
 
 template <typename TString = std::string, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
