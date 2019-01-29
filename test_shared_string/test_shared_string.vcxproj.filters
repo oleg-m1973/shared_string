@@ -24,6 +24,9 @@
     <ClInclude Include="..\shared_string.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\cow_string.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -32,5 +35,8 @@
     <ClCompile Include="test_shared_string.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="shared_string.natvis" />
   </ItemGroup>
 </Project>

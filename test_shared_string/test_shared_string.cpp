@@ -1,7 +1,12 @@
+// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
+
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 #include "stdafx.h"
 #define SHARED_STRING_TEST
+//#define SHARED_STRING_NAMESPACE test
 #include "../shared_string.h"
-
+#include "../cow_string.h"
 
 #include <thread>
 #include <mutex>
@@ -11,6 +16,8 @@
 
 using namespace std::literals;
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+//using namespace test;
 
 #define SMALL_STR "1234560!!!"sv
 #define SMALL_STR2 "12", "34"sv, "56"s, '0', repeat_char(3, '!')
@@ -74,11 +81,16 @@ std::wstring FormatStr(const TT&... vals)
 	}
 }
 
-#define TEST_VERIFY(expr, ...) Assert::IsTrue(expr, FormatStr(__VA_ARGS__, L#expr).c_str())
+template <typename... TT>
+std::wstring FormatStr(std::in_place_t, const TT&... vals)
+{
+	return FormatStr(vals...);
+}
+
+#define TEST_VERIFY(expr, ...) Assert::IsTrue(expr, FormatStr(std::in_place_t(), __VA_ARGS__, #expr).c_str())
 
 namespace test_shared_string
 {		
-
 
 template <typename TDst, typename TSrc>
 void LockedAssign(std::mutex &mx, TDst &dst, TSrc &&src)
@@ -103,7 +115,7 @@ public:
 		CommonTests(SMALL_STR, is_greater, LARGE_STR2);
 		CommonTests(SMALL_WSTR, is_equal, SMALL_WSTR2);
 		CommonTests(SMALL_WSTR, is_greater, LARGE_WSTR2);
-
+		
 		TEST_VERIFY(_SharedStringLeaks == 0, L"Memory leaks");
 	}
 
@@ -131,17 +143,26 @@ protected:
 		is_greater = 1,
 	};
 
+	template <typename TString, typename T>
+	TString CreateString(const T &arg)
+	{
+		if constexpr(std::is_same_v<T, repeat_char<typename TString::value_type>>)
+			return TString(arg.first, arg.second);
+		else if constexpr(std::is_same_v<T, TString::value_type>)
+			return TString(1, arg);
+		else
+			return TString(arg);
+	}
+
 	template <typename TString, typename T, typename... TT>
 	void TestConstruct(const T &arg, const TT&... args)
 	{
 		using TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>;
 		auto s = make_string<std::basic_string<typename TString::value_type>>(arg);
+		
 		TEST_VERIFY(s.size() == TMaker::size(arg), L"make_string", typeid(T).name());
 
-		if constexpr(std::is_same_v<T, repeat_char<typename TString::value_type>>)
-			TEST_VERIFY(TString(arg.first, arg.second) == s, L"Constuctor", typeid(T).name());
-		else
-			TEST_VERIFY(TString(arg) == s, L"Constuctor");
+		TEST_VERIFY(CreateString<TString>(arg) == s, L"Constuctor");
 			
 		TEST_VERIFY(make_shared_string<TString>(arg) == s, L"make_shared_string", typeid(T).name());
 
@@ -155,7 +176,7 @@ protected:
 		using TSmallOpt = CSmallStringOpt<CSharedLargeStr<TString::value_type>>;
 
 		static const size_t sso = sizeof(void *) * 3 / sizeof(TString::value_type) - 1;
-		TEST_VERIFY(sso == TSmallOpt::SmallSize, L"Small size", NAMED(sso), NAMED(TSmallOpt::SmallSize));
+		TEST_VERIFY(sso == TString::sso_size, L"Small size", NAMED(sso), NAMED(TString::sso_size));
 
 		for (size_t i = 1; i < 100; ++i)
 		{
@@ -206,28 +227,92 @@ protected:
 		}
 	}
 
+	template <typename TChar>
+	void TestCowString(const basic_shared_string<TChar> &mst)
+	{
+		const auto npos = basic_cow_string<TChar>::npos;
+
+		using cow_string = basic_cow_string<TChar>;
+		using string = std::basic_string<TChar>;
+
+		string s(mst);
+		cow_string cow = mst;
+
+		TEST_VERIFY(cow.is_small() != (cow.c_str() == mst.c_str()));
+		TEST_VERIFY(s == cow);
+
+#define TEST_COW_STRING(func) {cow_string s = mst; string s2(mst); \
+	s.func; s2.func; TEST_VERIFY(s == s2, L#func);}
+
+		TEST_COW_STRING(append(mst));
+		TEST_COW_STRING(insert(0, mst));
+		TEST_COW_STRING(insert(mst.size() / 2, mst));
+		TEST_COW_STRING(insert(mst.size(), mst));
+		Assert::ExpectException<std::out_of_range>([&mst]()
+		{
+			TEST_COW_STRING(insert(mst.size() + 1, mst));
+		}, L"std::out_of_range exception expected");
+
+		if (mst.empty())
+			Assert::ExpectException<std::out_of_range>([&mst]()
+			{
+				TEST_COW_STRING(erase(mst.size() - 2, 1));
+			}, L"std::out_of_range exception expected");
+		else
+		{
+			TEST_COW_STRING(erase(0, 1));
+			TEST_COW_STRING(erase(mst.size() - 2, 1));
+			TEST_COW_STRING(erase(mst.size() / 2, 1));
+		}
+
+#undef TEST_COW_STRING
+		{
+			const size_t n = mst.size();
+			cow_string s(n, '0');
+			string s2(n, '1');
+
+			s.modify([](auto *data, size_t sz) noexcept
+			{
+				cow_string::traits_type::assign(data, sz, '1');
+			});
+
+			TEST_VERIFY(s == s2, "modify");
+		}
+
+	}
+
 	template <typename TChar, typename... TT>
 	void CommonTests(const std::basic_string_view<TChar> &mst, int cmp, const TT&... args)
 	{
-		using TString = basic_shared_string<TChar>;
+		_CommonTests<basic_shared_string<TChar>>(mst, cmp, args...);
+		_CommonTests<basic_cow_string<TChar>>(mst, cmp, args...);
+	}
+
+	template <typename TString, typename... TT>
+	void _CommonTests(const std::basic_string_view<typename TString::value_type> &mst, int cmp, const TT&... args)
+	{
+		using TChar = typename TString::value_type; 
+
 		using TSmallOpt = CSmallStringOpt<CSharedLargeStr<TChar>>;
 		using TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>;
 	
 		TestConstruct<TString>(args...);
+
 		TestSSO<TString>();
 
 		const size_t sz = (TMaker::size(args) + ...);
 			   
 		auto s = make_shared_string<TString>(args...);
 
+		TEST_VERIFY(std::basic_string<TChar>(s) == s, "std::string()");
+		TEST_VERIFY((std::basic_string<TChar>() = s) == s, "std::string() assign");
+
 		TEST_VERIFY(s.is_small() == TSmallOpt::ShouldBeSmall(sz), L"Test should be small small");
 		TEST_VERIFY(s.size() == sz, L"Compare sizes");
 
-		TEST_VERIFY((TString() = mst) == mst, L"Assignment operator");
-
 		TEST_VERIFY(TString(s) == s, L"Copy constructor");
 		TEST_VERIFY(s.is_small() == TString(s).is_small(), TSmallOpt::ShouldBeSmall(sz)? L"String is small": L"String is large");
-		TEST_VERIFY(s.is_small() || TString(s).c_str() == s.c_str(), L"Copy constructor, large string pointers not same");
+		TEST_VERIFY(s.is_small() != (TString(s).c_str() == s.c_str()), L"Copy constructor, large string pointers not same");
 
 		TEST_VERIFY(TString(TString(s)) == s, L"Move constructor");
 
@@ -270,7 +355,7 @@ protected:
 				for (int i = 0; i < 10; ++i)
 				{
 					int n;
-					if constexpr(std::is_same_v<char, TChar>)
+					if constexpr(std::is_same_v<TString::value_type, char>)
 						n = sprintf_s(p, sz, "%d", i);
 					else 
 						n = swprintf_s(p, sz, L"%d", i);
@@ -282,14 +367,33 @@ protected:
 				return size_t(p - dst);
 			});
 
-			const auto cmp2 = s2.compare(mst2);
-			TEST_VERIFY(cmp2 == 0, L"Reserve constructor, sprintf");
+			TEST_VERIFY((s2 == mst2) && (mst2 == s2), L"Reserve constructor, sprintf");
+		}
+
+#define TS_ITEM(op, ...) \
+	TEST_VERIFY((s op mst) == (s2 op mst)); \
+	TEST_VERIFY((mst op s) == (mst op s2));
+
+		{
+			auto s2 = make_string<std::basic_string<TChar>>(args...);
+			TEST_VERIFY(s == s2);
+			SHARED_STRING_CMP
+		}
+
+#undef TS_ITEM
+		{
+			std::basic_stringstream<TChar> ss;
+			ss << s;
+			TEST_VERIFY(s == ss.str());
 		}
 
 		TestRefCounter(s);
 		TestSet<std::set<TString>>(mst);
 		TestSet<std::unordered_set<TString>>(mst);
+
 		TEST_VERIFY((sz == 0) == s.empty(), L"Test empty");
+
+		TestCowString(s);
 	}
 
 	void MultiThreadingTests(const std::string_view &mst)
@@ -297,7 +401,6 @@ protected:
 		volatile bool stop = false;
 		std::mutex mx;
 		shared_string s(mst);
-
 		std::list<std::thread> threads;
 		auto s2 = s;
 
@@ -306,7 +409,7 @@ protected:
 		{
 			while (!stop)
 			{
-				LockedAssign(mx, s, mst);
+				LockedAssign(mx, s, shared_string(mst));
 
 				shared_string s3;
 				s3 = s2;
