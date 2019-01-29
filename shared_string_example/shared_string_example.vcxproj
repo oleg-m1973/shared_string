@@ -125,6 +125,9 @@
     <ClInclude Include="..\cow_string.h" />
     <ClInclude Include="..\shared_string.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="..\shared_string.natvis" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
