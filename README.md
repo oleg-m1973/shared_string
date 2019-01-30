@@ -108,7 +108,7 @@ using shared_wstring = basic_shared_string<wchar_t>;
 
 template <typename TChar> struct repeat_char : std::pair<std::size_t, TChar> {};
 
-//make shared string by concatinating vals...
+//make shared string as concatination of vals...
 template <typename... TT> shared_string make_shared_string(TT&&... vals);
 template <typename... TT> shared_wstring make_shared_wstring(TT&&... vals);
 
