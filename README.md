@@ -78,29 +78,34 @@ public:
 	//return substr2(0, pos, pos, npos);
 	constexpr std::pair<string_view, string_view> substr2(size_type pos) const;
   
-	//functions forwarded to string_view, return sv().func(args...) ;
-	// at
-	// back
-	// begin
-	// cbegin
-	// end
-	// cend
-	// rbegin
-	// crbegin
-	// rend
-	// crend
-	// copy
-	// substr
-	// compare
-	// starts_with
-	// ends_with
-	// find
-	// rfind
-	// find_first_of
-	// find_last_of
-	// find_first_not_of
-	// find_last_not_of
-  
+#define SHARED_STRING_FUNCS(name) template <typename... TT> \
+	constexpr auto name(TT&&... args) const noexcept(noexcept(sv().name(std::forward<TT>(args)...))) \
+	{return sv().name(std::forward<TT>(args)...);}
+
+	SHARED_STRING_FUNCS(at)
+	SHARED_STRING_FUNCS(back)
+	SHARED_STRING_FUNCS(begin)
+	SHARED_STRING_FUNCS(cbegin)
+	SHARED_STRING_FUNCS(end)
+	SHARED_STRING_FUNCS(cend)
+	SHARED_STRING_FUNCS(rbegin)
+	SHARED_STRING_FUNCS(crbegin)
+	SHARED_STRING_FUNCS(rend)
+	SHARED_STRING_FUNCS(crend)
+	SHARED_STRING_FUNCS(copy)
+	SHARED_STRING_FUNCS(substr)
+	SHARED_STRING_FUNCS(compare)
+	SHARED_STRING_FUNCS(starts_with)
+	SHARED_STRING_FUNCS(ends_with)
+	SHARED_STRING_FUNCS(find)
+	SHARED_STRING_FUNCS(rfind)
+	SHARED_STRING_FUNCS(find_first_of)
+	SHARED_STRING_FUNCS(find_last_of)
+	SHARED_STRING_FUNCS(find_first_not_of)
+	SHARED_STRING_FUNCS(find_last_not_of)
+
+#undef SHARED_STRING_FUNCS
+
 };
 
 using shared_string = basic_shared_string<char>;
