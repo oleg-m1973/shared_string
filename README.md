@@ -78,7 +78,7 @@ public:
 	//return substr2(0, pos, pos, npos);
 	constexpr std::pair<string_view, string_view> substr2(size_type pos) const;
   
-	//functions forwaded to string_view, return sv().func(args...) ;
+	//functions forwarded to string_view, return sv().func(args...) ;
 	// at
 	// back
 	// begin
