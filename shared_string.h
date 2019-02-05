@@ -31,7 +31,11 @@ struct CSmallStringOpt
 	using size_type = typename TLargeStr::size_type;
 	
 	using TSmallSize = std::make_unsigned_t<value_type>;
-	using TSmallMask = uint64_t;
+	using TSmallMask = 
+		std::conditional_t<sizeof(value_type) == 1, uint16_t,
+		std::conditional_t<sizeof(value_type) == 2, uint32_t,
+		std::conditional_t<sizeof(value_type) == 4, uint64_t,
+		void>>>;
 
 	static const size_type sso_size = (sizeof(TLargeStr) - sizeof(TSmallSize)) / sizeof(value_type);
 	static const TSmallSize ZeroSmallSize = 0x01;
@@ -126,7 +130,7 @@ struct CSmallStringOpt
 
 	static_assert(sizeof(m_small) <= sizeof(m_large));
 	static_assert(sizeof(m_mask) <= sizeof(m_large));
-	static_assert(sizeof(m_mask) >= (sizeof(TSmallSize) + sizeof(value_type)));
+	static_assert(sizeof(m_mask) == sizeof(value_type) * 2);
 };
 
 class CRefCounter
@@ -170,7 +174,7 @@ struct CSharedLargeStr
 	
 	value_type *Init(size_type sz)
 	{
-		m_refs = new (new std::byte[sizeof(CRefStr) + (sz * sizeof(value_type))]) CRefStr();
+		m_refs = new (new std::byte[sizeof(CRefStr) + (sz * sizeof(value_type))]) CRefStr(); //-V119
 		m_sz = sz;
 		return m_str = m_refs->m_data;
 	}
@@ -444,6 +448,7 @@ public:
 	SHARED_STRING_FUNCS(find_last_not_of)
 
 #undef SHARED_STRING_FUNCS
+
 
 	constexpr std::pair<string_view, string_view> substr2(size_type pos1, size_type end1, size_type pos2, size_type end2) const
 	{
