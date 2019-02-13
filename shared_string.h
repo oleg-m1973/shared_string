@@ -5,6 +5,7 @@
  *
  * License: MIT License
  *
+ *!!! Compiler option /std:c++latest for Visual C++ or -std=c++17 for GCC should be used
  *****/
 
 #pragma once
@@ -24,6 +25,13 @@ namespace SHARED_STRING_NAMESPACE {
 static size_t _SharedStringLeaks = 0;
 #endif
 
+template <typename TChar> 
+struct repeat_char 
+: std::pair<std::size_t, TChar> 
+{
+	using std::pair<std::size_t, TChar>::pair;
+};
+
 template <typename TLargeStr>
 struct CSmallStringOpt
 {
@@ -37,9 +45,9 @@ struct CSmallStringOpt
 		std::conditional_t<sizeof(value_type) == 4, uint64_t,
 		void>>>;
 
-	static const size_type sso_size = (sizeof(TLargeStr) - sizeof(TSmallSize)) / sizeof(value_type);
-	static const TSmallSize ZeroSmallSize = 0x01;
-	static const TSmallMask SmallMask = 0x01;
+	static constexpr size_type sso_size = ((sizeof(TLargeStr) - sizeof(TSmallSize)) / sizeof(value_type)) - 1;
+	static constexpr TSmallSize ZeroSmallSize = 0x01;
+	static constexpr TSmallMask SmallMask = 0x01;
 
 	CSmallStringOpt() = default;
 	
@@ -55,20 +63,26 @@ struct CSmallStringOpt
 	
 	constexpr value_type *Init(const size_type sz)
 	{
-		if (sz == 0)
+		return Init(sz, sz);
+	}
+
+	constexpr value_type *Init(const size_type sz, const size_t cap)
+	{
+		if (cap == 0)
 		{
 			SetEmpty();
 			return m_small.m_str;
 		}
-		else if (ShouldBeSmall(sz))
+		else if (ShouldBeSmall(cap))
 		{
 			m_small.resize(sz);
+			m_small.m_str[sz] = 0;
 			return m_small.m_str;
 		}
 		else
 		{
 			SetEmpty();
-			auto p = m_large.Init(sz);
+			auto p = m_large.Init(sz, cap);
 			if (is_small())
 			{
 				m_large.Destroy();
@@ -76,6 +90,7 @@ struct CSmallStringOpt
 				throw std::bad_alloc();
 			}
 
+			p[sz] = 0;
 #ifdef SHARED_STRING_TEST
 			++_SharedStringLeaks;
 #endif 
@@ -93,9 +108,9 @@ struct CSmallStringOpt
 		m_mask = SmallMask;
 	}
 
-	static constexpr bool ShouldBeSmall(size_type sz) noexcept
+	static constexpr bool ShouldBeSmall(const size_type sz) noexcept
 	{
-		return sz < sso_size;
+		return sz <= sso_size;
 	}
 
 	[[nodiscard]] constexpr bool empty() const noexcept
@@ -118,7 +133,7 @@ struct CSmallStringOpt
 		}
 
 		TSmallSize m_sz;
-		value_type m_str[sso_size];
+		value_type m_str[sso_size + 1];
 	};
 	
 	union
@@ -172,9 +187,9 @@ struct CSharedLargeStr
 		value_type m_data[1];
 	};
 	
-	value_type *Init(size_type sz)
+	value_type *Init(const size_type sz, const size_t cap)
 	{
-		m_refs = new (new std::byte[sizeof(CRefStr) + (sz * sizeof(value_type))]) CRefStr(); //-V119
+		m_refs = new (new std::byte[sizeof(CRefStr) + (cap * sizeof(value_type))]) CRefStr(); //-V119
 		m_sz = sz;
 		return m_str = m_refs->m_data;
 	}
@@ -210,6 +225,7 @@ struct CSharedLargeStr
 	size_type m_sz;
 };
 
+template <typename TChar, typename Traits> class shared_string_creator;
 
 template <typename TChar = char, typename Traits = std::char_traits<TChar>>
 class basic_shared_string
@@ -229,8 +245,7 @@ public:
 	using value_type = TChar;
 	using size_type = std::size_t;
 	using difference_type = std::ptrdiff_t;
-
-
+	
 	using const_pointer = const value_type *;
 	using const_reference = const value_type &;
 	using pointer = const_pointer;
@@ -245,6 +260,9 @@ public:
 	using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 	static constexpr size_type npos = string_view::npos;
+
+	using creator = shared_string_creator<value_type, traits_type>;
+
 
 	using TSmallStringOpt::sso_size;
 	using TSmallStringOpt::empty;
@@ -264,7 +282,6 @@ public:
 	{
 		auto p = this->Init(sz);
 		traits_type::copy(p, psz, sz);
-		traits_type::assign(p[sz], 0);
 	}
 
 	explicit constexpr basic_shared_string(const string_view &src)
@@ -285,11 +302,19 @@ public:
 		traits_type::assign(m_small.m_str[1], 0);
 	}
 
-	explicit constexpr basic_shared_string(size_t n, value_type ch) noexcept
+	explicit constexpr basic_shared_string(size_t n, value_type ch) 
 	{
 		auto p = this->Init(n);
 		Traits::assign(p, n, ch);
-		Traits::assign(p[n], 0);
+	}
+
+	template <typename TFunc, typename... TT, typename = std::enable_if_t<std::is_invocable_v<TFunc, TT..., creator &>>>
+	constexpr basic_shared_string(TFunc &&func, TT&&... args) 
+	{
+		creator s;
+		std::invoke(std::forward<TFunc>(func), std::forward<TT>(args)..., s);
+		m_large = s.m_large;
+		s.SetEmpty();
 	}
 
 	template <typename TFunc, typename... TT, typename = std::enable_if_t<std::is_invocable_v<TFunc, TT..., value_type  *, size_type>>>
@@ -300,14 +325,14 @@ public:
 		if (sz2 > sz)
 			throw std::out_of_range(__FUNCTION__);
 
-		traits_type::assign(p[sz], 0);
-
 		if (sz2 < sz)
 		{
 			if (is_small())
 				m_small.resize(sz2);
 			else
 				m_large.m_sz = sz2;
+
+			traits_type::assign(p[sz2], 0);
 		}
 	}
 	
@@ -449,7 +474,6 @@ public:
 
 #undef SHARED_STRING_FUNCS
 
-
 	constexpr std::pair<string_view, string_view> substr2(size_type pos1, size_type end1, size_type pos2, size_type end2) const
 	{
 		const auto s = this->sv();
@@ -460,6 +484,7 @@ public:
 	{
 		return substr2(0, pos, pos, npos);
 	}
+
 protected:
 	struct CAppendHelper
 	{
@@ -468,39 +493,37 @@ protected:
 		: m_p(s.Init((TMaker::size(vals) + ...)))
 		{
 			(TMaker::Append(*this, std::forward<TT>(vals)), ...);
-			Traits::assign(*m_p, 0);
 		}
 
 		template <typename Allocator>
-		constexpr void append(TChar *dst, const std::basic_string<TChar, Traits, Allocator> &val) noexcept
+		constexpr void append(TChar *dst, const std::basic_string<value_type, traits_type, Allocator> &val) noexcept
 		{
 			const auto sz = val.size();
-			Traits::copy(m_p, val.data(), sz);
+			traits_type::copy(m_p, val.data(), sz);
 			m_p += sz;
 		}
 
 		constexpr void append(const string_view &val) noexcept
 		{
 			const auto sz = val.size();
-			Traits::copy(m_p, val.data(), sz);
+			traits_type::copy(m_p, val.data(), sz);
 			m_p += sz;
 		}
 
-		constexpr void append(const TChar ch) noexcept
+		constexpr void append(const value_type ch) noexcept
 		{
-			Traits::assign(*(m_p++), ch);
+			traits_type::assign(*(m_p++), ch);
 		}
 
-		constexpr void append(size_t n, const TChar ch) noexcept
+		constexpr void append(size_t n, const value_type ch) noexcept
 		{
-			Traits::assign(m_p, n, ch);
+			traits_type::assign(m_p, n, ch);
 			m_p += n;
 		}
 
 		value_type *m_p;
 	};
-
-
+	
 	constexpr void _reset() noexcept
 	{
 		if (!is_small())
@@ -536,7 +559,115 @@ protected:
 	{
 		return m_large.size();
 	}
+};
 
+template <typename TChar, typename Traits>
+class shared_string_creator
+: public basic_shared_string<TChar, Traits>
+{
+friend class basic_shared_string<TChar, Traits>;
+public:
+	using shared_string = basic_shared_string<TChar, Traits>;
+	using shared_string::value_type;
+	using shared_string::traits_type;
+	using shared_string::size_type;
+
+	using shared_string::string_view;
+
+	using shared_string::is_small;
+	using shared_string::size;
+	using shared_string::sso_size;
+
+	using shared_string::sv;
+
+	void reserve(const size_type cap)
+	{
+		if (cap > m_cap)
+			shared_string_creator(cap, sv())._swap(*this);
+	}
+
+	auto &append(const value_type * const str, const size_type sz)
+	{
+		if (sz != 0)
+			traits_type::copy(_append(sz), str, sz);
+
+		return *this;
+	}
+
+	auto &append(const string_view &sv)
+	{
+		return append(sv.data(), sv.size());
+	}
+
+	auto &append(value_type ch)
+	{
+		auto p = _append(1);
+		traits_type::assign(p[0], ch);
+		return *this;
+	}
+
+	auto &append(size_type n, value_type ch)
+	{
+		traits_type::assign(_append(n), n, ch);
+		return *this;
+	}
+
+	auto &append(const repeat_char<value_type> &chs)
+	{
+		traits_type::assign(_append(chs.first), chs.first, chs.second);
+		return *this;
+	}
+
+	template <typename T>
+	auto &operator +=(T &&val)
+	{
+		return append(std::forward<T>(val));
+	}
+
+protected:
+	using shared_string::swap;
+
+	using shared_string::small_data;
+	using shared_string::small_size;
+
+	using shared_string::large_data;
+	using shared_string::large_size;
+
+	using shared_string::m_small;
+	using shared_string::m_large;
+	
+	shared_string_creator() = default;
+	shared_string_creator(const shared_string_creator &) = delete;
+	shared_string_creator &operator =(const shared_string_creator &) = delete;
+
+	explicit constexpr shared_string_creator(size_t cap, const string_view &src)
+	: m_cap(cap)
+	{
+		const auto sz = src.size();
+		auto p = this->Init(sz, cap);
+		traits_type::copy(p, src.data(), sz);
+	}
+
+	value_type *_append(const size_type sz)
+	{
+		const auto cap = size() + sz;
+		if (cap > m_cap)
+			shared_string_creator(cap, sv())._swap(*this);
+		else if (is_small())
+		{
+			auto p = small_data() + small_size();
+			traits_type::assign(p[sz], 0);
+			m_small.resize(cap);
+			return p;
+		}
+
+		auto p = large_data() + large_size();
+		traits_type::assign(p[sz], 0);
+		m_large.m_sz = cap;
+		return p;
+	}
+
+	size_t m_cap = sso_size;
 };
 
 #define SHARED_STRING_CMP \
@@ -602,13 +733,6 @@ struct CTypeMap<_T, TT...>
 		else 
 			return res || CTypeMap<TT...>::template Has<T2, Pred>();
 	}
-};
-
-template <typename TChar> 
-struct repeat_char 
-: std::pair<std::size_t, TChar> 
-{
-	using std::pair<std::size_t, TChar>::pair;
 };
 
 template <typename TChar> repeat_char(size_t, TChar) -> repeat_char<TChar>;
