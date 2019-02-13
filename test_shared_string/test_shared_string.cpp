@@ -19,16 +19,16 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 //using namespace test;
 
-#define SMALL_STR "1234560!!!"sv
+#define SMALL_STR "1234560!!!"s
 #define SMALL_STR2 "12", "34"sv, "56"s, '0', repeat_char(3, '!')
 
-#define LARGE_STR "123456789012345678901234567890!!!"sv
+#define LARGE_STR "123456789012345678901234567890!!!"s
 #define LARGE_STR2 "123", "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', repeat_char(3, '!')
 
-#define SMALL_WSTR L"1234560!!!"sv
+#define SMALL_WSTR L"1234560!!!"s
 #define SMALL_WSTR2 L"12", L"34"sv, L"56"s, L'0', repeat_char(3, L'!')
 
-#define LARGE_WSTR L"123456789012345678901234567890!!!"sv
+#define LARGE_WSTR L"123456789012345678901234567890!!!"s
 #define LARGE_WSTR2 L"123", L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', repeat_char(3, L'!')
 
 
@@ -175,13 +175,13 @@ protected:
 	{
 		using TSmallOpt = CSmallStringOpt<CSharedLargeStr<TString::value_type>>;
 
-		static const size_t sso = sizeof(void *) * 3 / sizeof(TString::value_type) - 1;
+		static const size_t sso = sizeof(void *) * 3 / sizeof(TString::value_type) - 2;
 		TEST_VERIFY(sso == TString::sso_size, L"Small size", NAMED(sso), NAMED(TString::sso_size));
 
 		for (size_t i = 1; i < 100; ++i)
 		{
 			TString s(i, 'X');
-			TEST_VERIFY((s.size() < sso) == s.is_small(), L"SSO", NAMED(sso), NAMED(s.size()));
+			TEST_VERIFY((s.size() <= sso) == s.is_small(), L"SSO", NAMED(sso), NAMED(s.size()));
 		}
 	}
 
@@ -282,20 +282,21 @@ protected:
 	}
 
 	template <typename TChar, typename... TT>
-	void CommonTests(const std::basic_string_view<TChar> &mst, int cmp, const TT&... args)
+	void CommonTests(const std::basic_string<TChar> &mst, int cmp, const TT&... args)
 	{
 		_CommonTests<basic_shared_string<TChar>>(mst, cmp, args...);
 		_CommonTests<basic_cow_string<TChar>>(mst, cmp, args...);
 	}
 
 	template <typename TString, typename... TT>
-	void _CommonTests(const std::basic_string_view<typename TString::value_type> &mst, int cmp, const TT&... args)
+	void _CommonTests(const std::basic_string<typename TString::value_type> &mst, int cmp, const TT&... args)
 	{
 		using TChar = typename TString::value_type; 
 
 		using TSmallOpt = CSmallStringOpt<CSharedLargeStr<TChar>>;
 		using TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>;
-	
+		using string_view = std::basic_string_view<typename TString::value_type>;
+
 		TestConstruct<TString>(args...);
 
 		TestSSO<TString>();
@@ -335,7 +336,11 @@ protected:
 
 		{
 			const auto cmp2 = s.compare(mst);
+			
 			TEST_VERIFY(((cmp < 0) == (cmp2 < 0)) && ((cmp == 0) == (cmp2 == 0)), L"Compare");
+
+			const auto cmp3 = string_view(s.c_str()).compare(mst);
+			TEST_VERIFY(cmp2 == cmp3, L"Compare", cmp2, cmp3);
 		}
 
 		{
@@ -360,14 +365,36 @@ protected:
 					else 
 						n = swprintf_s(p, sz, L"%d", i);
 				
-					mst2.append(p, n);
-					p += n;
+					mst2.append(p, size_t(n));
+					p += size_t(n);
 					sz -= size_t(n);
 				}
 				return size_t(p - dst);
 			});
 
 			TEST_VERIFY((s2 == mst2) && (mst2 == s2), L"Reserve constructor, sprintf");
+			TEST_VERIFY((string_view(s2.c_str()) == string_view(mst2.c_str())), L"Reserve constructor, c_str()");
+		}
+
+		{
+			TString s2([&args...](auto &s)
+			{
+				(s.append(args), ...);
+			});
+
+			TEST_VERIFY((s2 == s), L"shared_string_creator constructor");
+			TEST_VERIFY((string_view(s2.c_str()) == string_view(s.c_str())), L"shared_string_creator constructor, c_str()");
+		}
+
+		{
+			TString s2([&sz, &args...](auto &s)
+			{
+				s.reserve(sz);
+				(s.append(args), ...);
+			});
+
+			TEST_VERIFY((s2 == s), L"shared_string_creator constructor");
+			TEST_VERIFY((string_view(s2.c_str()) == string_view(s.c_str())), L"shared_string_creator constructor, c_str()");
 		}
 
 #define TS_ITEM(op, ...) \
