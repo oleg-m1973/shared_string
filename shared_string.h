@@ -32,6 +32,8 @@ struct repeat_char
 	using std::pair<std::size_t, TChar>::pair;
 };
 
+template <typename TChar> repeat_char(size_t, TChar) -> repeat_char<TChar>;
+
 template <typename TLargeStr>
 struct CSmallStringOpt
 {
@@ -340,7 +342,7 @@ public:
 	constexpr basic_shared_string(const std::in_place_type_t<TMaker> &maker, TT&&... vals)
 	{
 		TMaker::VerifyType(vals...);
-		CAppendHelper(*this, maker, typename TMaker::template T<TT>(std::forward<TT>(vals))...);
+		CAppendHelper(*this, maker, TMaker::ToStr(std::forward<TT>(vals))...);
 	}
 
 	constexpr basic_shared_string(const basic_shared_string &src) noexcept
@@ -447,7 +449,7 @@ public:
 	}
 
 #define SHARED_STRING_FUNCS(name) template <typename... TT> \
-	constexpr auto name(TT&&... args) const noexcept(noexcept(sv().name(std::forward<TT>(args)...))) \
+	constexpr auto name(TT&&... args) const noexcept(noexcept(string_view().name(std::forward<TT>(args)...))) \
 	{return sv().name(std::forward<TT>(args)...);}
 
 	SHARED_STRING_FUNCS(at)
@@ -568,11 +570,11 @@ class shared_string_creator
 friend class basic_shared_string<TChar, Traits>;
 public:
 	using shared_string = basic_shared_string<TChar, Traits>;
-	using shared_string::value_type;
-	using shared_string::traits_type;
-	using shared_string::size_type;
+	using typename shared_string::value_type;
+	using typename shared_string::traits_type;
+	using typename shared_string::size_type;
 
-	using shared_string::string_view;
+	using typename shared_string::string_view;
 
 	using shared_string::is_small;
 	using shared_string::size;
@@ -680,7 +682,7 @@ protected:
 
 #define TS_ITEM(op, nop) \
 	template <typename TChar, typename Traits, typename T> constexpr bool operator op(const basic_shared_string<TChar, Traits> &s1, const T &s2) noexcept {return s1.compare(s2) op 0;} \
-	template <typename TChar, typename Traits, typename T, typename = std::enable_if_t<!std::is_base_of_v<basic_shared_string<TChar, Traits>, T> && !std::is_same_v<basic_shared_string<TChar, Traits>, T>>> \
+	template <typename T, typename TChar, typename Traits, typename = std::enable_if_t<!std::is_base_of_v<basic_shared_string<TChar, Traits>, T> && !std::is_same_v<basic_shared_string<TChar, Traits>, T>>> \
 	constexpr bool operator op(const T &s1, const basic_shared_string<TChar, Traits> &s2) noexcept {return s2.compare(s1) nop 0;} \
 	
 SHARED_STRING_CMP
@@ -695,52 +697,75 @@ template <typename TChar, typename Traits> std::basic_ostream<TChar, Traits> &op
 using shared_string = basic_shared_string<char>;
 using shared_wstring = basic_shared_string<wchar_t>;
 
-template <typename... TT> 
-struct CTypeMap
+template <typename Tuple, typename T, template <typename, typename> typename Pred, size_t I = 0>
+constexpr size_t _tuple_index() noexcept
 {
-	template <size_t I> using T = void;
+	if constexpr(I >= std::tuple_size_v<Tuple>)
+		return I;
+	else if constexpr(Pred<T, std::tuple_element_t<I, Tuple>>::value)
+		return I;
+	else 
+		return _tuple_index<Tuple, T, Pred, I + 1>();
+}
 
-	template <typename , typename NotFound = void, template<typename, typename> typename = std::is_same> 
-	using FindFirst = NotFound; 
-};
+template <typename Tuple, typename T, typename NotFound = void, template <typename, typename> typename Pred = std::is_same>
+using tuple_find_t = std::tuple_element_t<_tuple_index<Tuple, T, Pred>(), decltype(std::tuple_cat(std::declval<Tuple>(), std::declval<std::tuple<NotFound>>()))>;
 
-template <> struct CTypeMap<void> : CTypeMap<> {};
+template <typename Tuple, typename T, template <typename, typename> typename Pred = std::is_same>
+static constexpr bool tuple_has = _tuple_index<Tuple, T, Pred>() < std::tuple_size_v<Tuple>;
 
-template <typename _T, typename... TT> 
-struct CTypeMap<_T, TT...>
-: public CTypeMap<TT...>
+template <typename Tuple, size_t I = 0>
+constexpr bool _tuple_unique_types() noexcept
 {
-	template <size_t I> using T = std::tuple_element_t<I, std::tuple<_T, TT...>>;
+	constexpr auto sz = std::tuple_size_v<Tuple>;
+	if constexpr(I < sz)
+		return true;
+	else
+		return (_tuple_index<Tuple, std::tuple_element_t<I, Tuple>, std::is_same, I + 1>() >= sz) && _tuple_unique_types<Tuple, I + 1>();
+}
 
-	template 
-	<
-		typename T2, 
-		typename NotFound = void, 
-		template<typename, typename> typename Pred = std::is_same
-	> 
-	using Find = std::conditional_t<Pred<T2, _T>::value, _T, typename CTypeMap<TT...>::template FindFirst<T2, NotFound, Pred>>;
-
-	template 
-	<
-		typename T2, 
-		template<typename, typename> typename Pred = std::is_same
-	> 
-	static constexpr bool Has() noexcept
-	{
-		const bool res = Pred<T2, _T>::value;
-		if constexpr(sizeof...(TT) == 0)
-			return res;
-		else 
-			return res || CTypeMap<TT...>::template Has<T2, Pred>();
-	}
-};
-
-template <typename TChar> repeat_char(size_t, TChar) -> repeat_char<TChar>;
+template <typename Tuple>
+static constexpr bool tuple_unique_types = _tuple_unique_types<Tuple>();
 
 template <typename TString, typename T, typename = std::void_t<>> struct CanAppend: std::false_type {};
 template <typename TString, typename T> struct CanAppend<TString, T, std::void_t<decltype(std::declval<TString>().append(std::declval<T>()))>>: std::true_type{};
 
-template <typename TChar, typename Traits = std::char_traits<TChar>, typename = void>
+template <typename TChar> 
+struct to_string_t
+: public std::basic_string<TChar>
+{
+	to_string_t() = delete;
+
+	template <typename T, typename = std::void_t<decltype(std::to_string(std::declval<T>()))>>
+	to_string_t(T &&val)
+	: std::basic_string<TChar>(to_string(std::forward<T>(val)))
+	{
+	}
+
+	template <typename T>
+	static constexpr auto to_string(T &&val)
+	{
+		if constexpr(std::is_same_v<TChar, char>)
+			return std::to_string(std::forward<T>(val));
+		else if constexpr(std::is_same_v<TChar, wchar_t>)
+			return std::to_wstring(std::forward<T>(val));
+		else
+			return std::forward<T>(val);
+	}
+};
+
+template <typename TChar, typename Traits = std::char_traits<TChar>>
+using TStringMakerTypes = std::tuple
+<
+	const std::basic_string_view<TChar, Traits>,
+	const std::basic_string<TChar, Traits>,
+	const TChar,
+	const repeat_char<TChar>,
+	std::basic_string_view<TChar, Traits>,
+	to_string_t<TChar>
+>;
+
+template <typename TChar, typename Traits = std::char_traits<TChar>, typename Types = TStringMakerTypes<TChar, Traits>>
 struct CStringMaker
 {
 	using traits_type = Traits;
@@ -749,18 +774,11 @@ struct CStringMaker
 
 	using string_view = std::basic_string_view<value_type, traits_type>;
 
-	using TypeMap = CTypeMap
-	<
-		const string_view &,
-		const value_type &,
-		const repeat_char<value_type> &,
-		string_view
-	>;
+	using TypeMap = Types;
+	static_assert(tuple_unique_types<TypeMap>);
 
-	template <typename TSrc, typename TDst, typename TDst2 = std::decay_t<TDst>> 
-	using _find_type = std::conditional_t<std::is_reference_v<TDst>, std::is_same<TSrc, TDst2>, std::is_convertible<TSrc, TDst2>>;
-
-	template <typename _T> using T = typename TypeMap::template Find<_T, const _T &, _find_type>;
+	template <typename T2, typename T>
+	using map_type_t = std::conditional_t<std::is_const_v<T>, std::is_same<std::remove_const_t<T>, std::decay_t<T2>>, std::is_convertible<T2, T>>;
 
 	static constexpr size_type size(const string_view& val) noexcept(noexcept(val.size()))
 	{
@@ -772,15 +790,29 @@ struct CStringMaker
 		return 1;
 	}
 
+	static constexpr size_type size(const to_string_t<value_type> &val) noexcept
+	{
+		return val.size();
+	}
+
 	static constexpr size_type size(const repeat_char<value_type> &val) noexcept
 	{
 		return val.first;
 	}
 
-	template <bool Assert = true, typename T>
-	static constexpr bool VerifyType(const T &) noexcept
+	template <typename T, typename T2 = tuple_find_t<TypeMap, T, void, map_type_t>>
+	static constexpr decltype(auto) ToStr(T&& val) noexcept(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
 	{
-		const bool res = TypeMap::template Has<T, _find_type>();
+		if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
+			return std::forward<T>(val);
+		else
+			return T2(val);
+	}
+
+	template <bool Assert = true, typename T>
+	static constexpr bool VerifyType() noexcept
+	{
+		constexpr bool res = tuple_has<TypeMap, T, map_type_t>;
 		static_assert(!Assert || res, "Can't make string from type");
 		return res;
 	}
@@ -788,7 +820,7 @@ struct CStringMaker
 	template <bool Assert = true, typename... TT>
 	static constexpr bool VerifyType(const TT&... vals) noexcept
 	{
-		return (VerifyType<Assert>(vals) && ... && true);
+		return (VerifyType<Assert, TT>() && ... && true);
 	}
 
 	template <typename TString, typename T> 
@@ -822,38 +854,39 @@ struct CStringMaker
 	}
 };
 
-template <typename TString = shared_string, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
-TString _make_shared_string(TT&&... vals)
-{
-	return TString(std::in_place_type<TMaker>, std::forward<TT>(vals)...);
-}
-
-template <typename... TT>
+template <typename TMaker = CStringMaker<typename shared_string::value_type, typename shared_string::traits_type>, typename... TT>
 shared_string make_shared_string(TT&&... vals)
 {
-	return _make_shared_string<shared_string>(std::forward<TT>(vals)...);
+	return shared_string(std::in_place_type<TMaker>, std::forward<TT>(vals)...);
 }
 
-template <typename... TT>
+template <typename TMaker = CStringMaker<typename shared_wstring::value_type, typename shared_wstring::traits_type>, typename... TT>
 shared_wstring make_shared_wstring(TT&&... vals)
 {
-	return _make_shared_string<shared_wstring>(std::forward<TT>(vals)...);
+	return shared_wstring(std::in_place_type<TMaker>, std::forward<TT>(vals)...);
 }
 
-template <typename TString = std::string, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
-TString make_string(TT&&... vals)
+template <typename TString, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
+auto _make_string(TT&&... vals)
 {
-	TMaker::VerifyType(vals...);
 	TString res;
 	res.reserve((TMaker::size(vals) + ...));
 	TMaker::Append(res, std::forward<TT>(vals)...);
 	return res;
 }
 
-template <typename TString = std::wstring, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
-shared_string make_wstring(TT&&... vals)
+template <typename TMaker = CStringMaker<typename std::string::value_type, typename std::string::traits_type>, typename... TT>
+std::string make_string(TT&&... vals)
 {
-	return make_string<TString, TMaker>(std::forward<TT>(vals)...);
+	TMaker::VerifyType(vals...);
+	return _make_string<std::string, TMaker>(TMaker::ToStr(std::forward<TT>(vals))...);
+}
+
+template <typename TMaker = CStringMaker<typename std::wstring::value_type, typename std::wstring::traits_type>, typename... TT>
+std::wstring make_wstring(TT&&... vals)
+{
+	TMaker::VerifyType(vals...);
+	return _make_string<std::string, TMaker>(TMaker::ToStr(std::forward<TT>(vals))...);
 }
 
 
