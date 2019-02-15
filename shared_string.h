@@ -492,7 +492,7 @@ protected:
 	{
 		template <typename TMaker, typename... TT>
 		constexpr CAppendHelper(basic_shared_string &s, const std::in_place_type_t<TMaker> &maker, TT&&... vals)
-		: m_p(s.Init((TMaker::size(vals) + ...)))
+		: m_p(s.Init((TMaker::size(vals) + ... + 0)))
 		{
 			(TMaker::Append(*this, std::forward<TT>(vals)), ...);
 		}
@@ -715,17 +715,14 @@ template <typename Tuple, typename T, template <typename, typename> typename Pre
 static constexpr bool tuple_has = _tuple_index<Tuple, T, Pred>() < std::tuple_size_v<Tuple>;
 
 template <typename Tuple, size_t I = 0>
-constexpr bool _tuple_unique_types() noexcept
+constexpr bool tuple_unique_types() noexcept
 {
 	constexpr auto sz = std::tuple_size_v<Tuple>;
 	if constexpr(I < sz)
 		return true;
 	else
-		return (_tuple_index<Tuple, std::tuple_element_t<I, Tuple>, std::is_same, I + 1>() >= sz) && _tuple_unique_types<Tuple, I + 1>();
+		return (_tuple_index<Tuple, std::tuple_element_t<I, Tuple>, std::is_same, I + 1>() >= sz) && tuple_unique_types<Tuple, I + 1>();
 }
-
-template <typename Tuple>
-static constexpr bool tuple_unique_types = _tuple_unique_types<Tuple>();
 
 template <typename TString, typename T, typename = std::void_t<>> struct CanAppend: std::false_type {};
 template <typename TString, typename T> struct CanAppend<TString, T, std::void_t<decltype(std::declval<TString>().append(std::declval<T>()))>>: std::true_type{};
@@ -775,12 +772,22 @@ struct CStringMaker
 	using string_view = std::basic_string_view<value_type, traits_type>;
 
 	using TypeMap = Types;
-	static_assert(tuple_unique_types<TypeMap>);
+	static_assert(tuple_unique_types<TypeMap>());
 
 	template <typename T2, typename T>
 	using map_type_t = std::conditional_t<std::is_const_v<T>, std::is_same<std::remove_const_t<T>, std::decay_t<T2>>, std::is_convertible<T2, T>>;
 
-	static constexpr size_type size(const string_view& val) noexcept(noexcept(val.size()))
+	template <typename T, typename T2 = tuple_find_t<TypeMap, T, void, map_type_t>>
+	static constexpr decltype(auto) ToStr(T&& val) noexcept(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
+	{
+		if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
+			return std::forward<T>(val);
+		else
+			return T2(val);
+	}
+
+	template <typename T, typename = std::void_t<decltype(std::declval<T>().size())>>
+	static constexpr size_type size(const T& val) noexcept(noexcept(val.size()))
 	{
 		return val.size();
 	}
@@ -798,15 +805,6 @@ struct CStringMaker
 	static constexpr size_type size(const repeat_char<value_type> &val) noexcept
 	{
 		return val.first;
-	}
-
-	template <typename T, typename T2 = tuple_find_t<TypeMap, T, void, map_type_t>>
-	static constexpr decltype(auto) ToStr(T&& val) noexcept(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
-	{
-		if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
-			return std::forward<T>(val);
-		else
-			return T2(val);
 	}
 
 	template <bool Assert = true, typename T>
@@ -903,3 +901,4 @@ template <typename TChar, typename Traits>
 struct hash<NS(basic_shared_string)<TChar, Traits>> : hash<typename NS(basic_shared_string)<TChar, Traits>::string_view> {};
 }
 #undef NS
+
