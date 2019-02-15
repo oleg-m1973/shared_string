@@ -17,19 +17,28 @@
 using namespace std::literals;
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
+template <typename TChar, typename... TT>
+auto _make_shared_string(TT&&... vals)
+{
+	if constexpr(std::is_same_v<TChar, char>)
+		return make_shared_string(std::forward<TT>(vals)...);
+	else 
+		return make_shared_wstring(std::forward<TT>(vals)...);
+}
+
 //using namespace test;
 
 #define SMALL_STR "1234560!!!"s
-#define SMALL_STR2 "12", "34"sv, "56"s, '0', repeat_char(3, '!')
+#define SMALL_STR2 12, "34"sv, "56"s, '0', repeat_char(3, '!')
 
 #define LARGE_STR "123456789012345678901234567890!!!"s
-#define LARGE_STR2 "123", "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', repeat_char(3, '!')
+#define LARGE_STR2 123, "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', repeat_char(3, '!')
 
 #define SMALL_WSTR L"1234560!!!"s
-#define SMALL_WSTR2 L"12", L"34"sv, L"56"s, L'0', repeat_char(3, L'!')
+#define SMALL_WSTR2 12, L"34"sv, L"56"s, L'0', repeat_char(3, L'!')
 
 #define LARGE_WSTR L"123456789012345678901234567890!!!"s
-#define LARGE_WSTR2 L"123", L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', repeat_char(3, L'!')
+#define LARGE_WSTR2 123, L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', repeat_char(3, L'!')
 
 
 #define NAMED(val) std::pair(L#val, val)
@@ -158,13 +167,13 @@ protected:
 	void TestConstruct(const T &arg, const TT&... args)
 	{
 		using TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>;
-		auto s = make_string<std::basic_string<typename TString::value_type>>(arg);
+		auto s = _make_string<std::basic_string<typename TString::value_type>>(TMaker::ToStr(arg));
 		
-		TEST_VERIFY(s.size() == TMaker::size(arg), L"make_string", typeid(T).name());
+		TEST_VERIFY(s.size() == TMaker::size(TMaker::ToStr(arg)), L"make_string", typeid(T).name());
 
-		TEST_VERIFY(CreateString<TString>(arg) == s, L"Constuctor");
+		TEST_VERIFY(CreateString<TString>(TMaker::ToStr(arg)) == s, L"Constuctor");
 			
-		TEST_VERIFY(_make_shared_string<TString>(arg) == s, L"make_shared_string", typeid(T).name());
+		TEST_VERIFY(_make_shared_string<TString::value_type>(arg) == s, L"make_shared_string", typeid(arg).name());
 
 		if constexpr(sizeof...(args) != 0)
 			TestConstruct<TString>(args...);
@@ -207,21 +216,13 @@ protected:
 		using TString = TSet::key_type;
 		TSet items;
 
-		auto to_string = [&mst](int i)
-		{
-			if constexpr(std::is_same_v<char, TString::value_type>)
-				return _make_shared_string<TString>(mst, std::to_string(i));
-			else 
-				return _make_shared_string<TString>(mst, std::to_wstring(i));
-		};
-		
-		items.emplace(to_string(0));
+		items.emplace(_make_shared_string<TString::value_type>(0));
 
 		for (int i = 1; i < 100; ++i)
 		{
-			items.emplace(to_string(i));
+			items.emplace(_make_shared_string<TString::value_type>(i));
 			
-			auto s = to_string(i - 1);
+			auto s = _make_shared_string<TString::value_type>(i - 1);
 			TEST_VERIFY(items.find(s) != items.end(), L"Find item", i - 1, NAMED(s.is_small()));
 			TEST_VERIFY(items.size() == i + 1, L"Size of set", items.size());
 		}
@@ -281,11 +282,52 @@ protected:
 
 	}
 
+	template <typename TChar, typename T, typename T2, typename TMapped = decltype(CStringMaker<TChar>::ToStr(std::declval<T>()))>
+	void _TestStringMakerType()
+	{
+		if constexpr(!std::is_void_v<T2>)
+			CStringMaker<TChar>::VerifyType<true, T>();
+		
+		static_assert(std::is_same_v<std::decay_t<TMapped>, T2>);
+		static_assert(std::is_same_v<std::decay_t<TMapped>, std::decay_t<T>> == std::is_reference_v<TMapped>);
+	}
+
+	template <typename TChar, typename T, typename T2 = T>
+	void TestStringMakerType()
+	{
+		_TestStringMakerType<TChar, T, T2>();
+		_TestStringMakerType<TChar, T &, T2>();
+		_TestStringMakerType<TChar, T &&, T2>();
+		_TestStringMakerType<TChar, const T &, T2>();
+	}
+
+	template <typename TChar>
+	void TestStringMakerTypes()
+	{
+		TestStringMakerType<TChar, std::basic_string_view<TChar>>();
+		TestStringMakerType<TChar, TChar>();
+		TestStringMakerType<TChar, repeat_char<TChar>>();
+		TestStringMakerType<TChar, std::basic_string<TChar>>();
+		TestStringMakerType<TChar, TChar *, std::basic_string_view<TChar>>();
+		TestStringMakerType<TChar, const TChar *, std::basic_string_view<TChar>>();
+		TestStringMakerType<TChar, int, to_string_t<TChar>>();
+		TestStringMakerType<TChar, unsigned int, to_string_t<TChar>>();
+		TestStringMakerType<TChar, double, to_string_t<TChar>>();
+		TestStringMakerType<TChar, void *, void>();
+	}
+
 	template <typename TChar, typename... TT>
 	void CommonTests(const std::basic_string<TChar> &mst, int cmp, const TT&... args)
 	{
+		TestStringMakerTypes<TChar>();
+
 		_CommonTests<basic_shared_string<TChar>>(mst, cmp, args...);
 		_CommonTests<basic_cow_string<TChar>>(mst, cmp, args...);
+
+		TEST_VERIFY(make_shared_string(12345) == "12345");
+		TEST_VERIFY(make_shared_string(-12345) == "-12345");
+		TEST_VERIFY(make_shared_string(12.345) == std::to_string(12.345));
+
 	}
 
 	template <typename TString, typename... TT>
@@ -301,15 +343,15 @@ protected:
 
 		TestSSO<TString>();
 
-		const size_t sz = (TMaker::size(args) + ...);
+		const size_t sz = (TMaker::size(TMaker::ToStr(args)) + ...);
 			   
-		auto s = _make_shared_string<TString>(args...);
+		auto s = _make_shared_string<TString::value_type>(args...);
 
 		TEST_VERIFY(std::basic_string<TChar>(s) == s, "std::string()");
 		TEST_VERIFY((std::basic_string<TChar>() = s) == s, "std::string() assign");
 
 		TEST_VERIFY(s.is_small() == TSmallOpt::ShouldBeSmall(sz), L"Test should be small small");
-		TEST_VERIFY(s.size() == sz, L"Compare sizes");
+		TEST_VERIFY(s.size() == sz, L"Compare sizes", s.size(), sz);
 
 		TEST_VERIFY(TString(s) == s, L"Copy constructor");
 		TEST_VERIFY(s.is_small() == TString(s).is_small(), TSmallOpt::ShouldBeSmall(sz)? L"String is small": L"String is large");
@@ -320,7 +362,7 @@ protected:
 		TEST_VERIFY((TString() = s) == s, L"Copy assignment");
 
 		TEST_VERIFY((TString() = TString(s)) == s, L"Move assignment");
-
+		
 		{
 			typename TString::size_type i = 0;
 			bool res = true;
@@ -372,14 +414,14 @@ protected:
 				return size_t(p - dst);
 			});
 
-			TEST_VERIFY((s2 == mst2) && (mst2 == s2), L"Reserve constructor, sprintf");
+			TEST_VERIFY((s2 == mst2) && (mst2 == s2), L"Reserve constructor, sprintf"); //-V501
 			TEST_VERIFY((string_view(s2.c_str()) == string_view(mst2.c_str())), L"Reserve constructor, c_str()");
 		}
 
 		{
 			TString s2([&args...](auto &s)
 			{
-				(s.append(args), ...);
+				(s.append(TMaker::ToStr(args)), ...);
 			});
 
 			TEST_VERIFY((s2 == s), L"shared_string_creator constructor");
@@ -390,7 +432,7 @@ protected:
 			TString s2([&sz, &args...](auto &s)
 			{
 				s.reserve(sz);
-				(s.append(args), ...);
+				(s.append(TMaker::ToStr(args)), ...);
 			});
 
 			TEST_VERIFY((s2 == s), L"shared_string_creator constructor");
@@ -402,7 +444,7 @@ protected:
 	TEST_VERIFY((mst op s) == (mst op s2));
 
 		{
-			auto s2 = make_string<std::basic_string<TChar>>(args...);
+			auto s2 = _make_string<std::basic_string<TChar>>(TMaker::ToStr(args)...);
 			TEST_VERIFY(s == s2);
 			SHARED_STRING_CMP
 		}
