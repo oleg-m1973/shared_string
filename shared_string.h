@@ -264,8 +264,7 @@ public:
 	static constexpr size_type npos = string_view::npos;
 
 	using creator = shared_string_creator<value_type, traits_type>;
-
-
+	
 	using TSmallStringOpt::sso_size;
 	using TSmallStringOpt::empty;
 	using TSmallStringOpt::is_small;
@@ -291,8 +290,8 @@ public:
 	{
 	}
 
-	template <typename T>
-	explicit constexpr basic_shared_string(const std::basic_string<value_type, traits_type, T> &src)
+	template <typename Allocator>
+	explicit constexpr basic_shared_string(const std::basic_string<value_type, traits_type, Allocator> &src)
 	: basic_shared_string(src.data(), src.size())
 	{
 	}
@@ -341,7 +340,6 @@ public:
 	template <typename TMaker, typename... TT>
 	constexpr basic_shared_string(const std::in_place_type_t<TMaker> &maker, TT&&... vals)
 	{
-		TMaker::VerifyType(vals...);
 		CAppendHelper(*this, maker, TMaker::ToStr(std::forward<TT>(vals))...);
 	}
 
@@ -497,15 +495,8 @@ protected:
 			(TMaker::Append(*this, std::forward<TT>(vals)), ...);
 		}
 
-		template <typename Allocator>
-		constexpr void append(TChar *dst, const std::basic_string<value_type, traits_type, Allocator> &val) noexcept
-		{
-			const auto sz = val.size();
-			traits_type::copy(m_p, val.data(), sz);
-			m_p += sz;
-		}
-
-		constexpr void append(const string_view &val) noexcept
+		template <typename T, typename = std::void_t<decltype(std::declval<T>().data()), decltype(std::declval<T>().size())>>
+		constexpr void append(const T &val) noexcept
 		{
 			const auto sz = val.size();
 			traits_type::copy(m_p, val.data(), sz);
@@ -708,7 +699,7 @@ constexpr size_t _tuple_index() noexcept
 		return _tuple_index<Tuple, T, Pred, I + 1>();
 }
 
-template <typename Tuple, typename T, typename NotFound = void, template <typename, typename> typename Pred = std::is_same>
+template <typename Tuple, typename T, template <typename, typename> typename Pred = std::is_same, typename NotFound = void>
 using tuple_find_t = std::tuple_element_t<_tuple_index<Tuple, T, Pred>(), decltype(std::tuple_cat(std::declval<Tuple>(), std::declval<std::tuple<NotFound>>()))>;
 
 template <typename Tuple, typename T, template <typename, typename> typename Pred = std::is_same>
@@ -777,9 +768,10 @@ struct CStringMaker
 	template <typename T2, typename T>
 	using map_type_t = std::conditional_t<std::is_const_v<T>, std::is_same<std::remove_const_t<T>, std::decay_t<T2>>, std::is_convertible<T2, T>>;
 
-	template <typename T, typename T2 = tuple_find_t<TypeMap, T, void, map_type_t>>
+	template <bool Assert = true, typename T, typename T2 = tuple_find_t<TypeMap, T, map_type_t>>
 	static constexpr decltype(auto) ToStr(T&& val) noexcept(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
 	{
+		static_assert(!Assert || !std::is_void_v<T2>, "Can't make string from type");
 		if constexpr(std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
 			return std::forward<T>(val);
 		else
@@ -805,20 +797,6 @@ struct CStringMaker
 	static constexpr size_type size(const repeat_char<value_type> &val) noexcept
 	{
 		return val.first;
-	}
-
-	template <bool Assert = true, typename T>
-	static constexpr bool VerifyType() noexcept
-	{
-		constexpr bool res = tuple_has<TypeMap, T, map_type_t>;
-		static_assert(!Assert || res, "Can't make string from type");
-		return res;
-	}
-
-	template <bool Assert = true, typename... TT>
-	static constexpr bool VerifyType(const TT&... vals) noexcept
-	{
-		return (VerifyType<Assert, TT>() && ... && true);
 	}
 
 	template <typename TString, typename T> 
@@ -876,14 +854,12 @@ auto _make_string(TT&&... vals)
 template <typename TMaker = CStringMaker<typename std::string::value_type, typename std::string::traits_type>, typename... TT>
 std::string make_string(TT&&... vals)
 {
-	TMaker::VerifyType(vals...);
 	return _make_string<std::string, TMaker>(TMaker::ToStr(std::forward<TT>(vals))...);
 }
 
 template <typename TMaker = CStringMaker<typename std::wstring::value_type, typename std::wstring::traits_type>, typename... TT>
 std::wstring make_wstring(TT&&... vals)
 {
-	TMaker::VerifyType(vals...);
 	return _make_string<std::string, TMaker>(TMaker::ToStr(std::forward<TT>(vals))...);
 }
 
