@@ -12,6 +12,7 @@
 #include <mutex>
 #include <set>
 #include <unordered_set>
+#include <string>
 
 
 using namespace std::literals;
@@ -29,16 +30,16 @@ auto _make_shared_string(TT&&... vals)
 //using namespace test;
 
 #define SMALL_STR "1234560!!!"s
-#define SMALL_STR2 12, "34"sv, "56"s, '0', repeat_char(3, '!')
+#define SMALL_STR2 12, "34"sv, "56"s, '0', clone_char(3, '!')
 
 #define LARGE_STR "123456789012345678901234567890!!!"s
-#define LARGE_STR2 123, "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', repeat_char(3, '!')
+#define LARGE_STR2 123, "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', "123", "456"s, "789"sv, '0', clone_char(3, '!')
 
 #define SMALL_WSTR L"1234560!!!"s
-#define SMALL_WSTR2 12, L"34"sv, L"56"s, L'0', repeat_char(3, L'!')
+#define SMALL_WSTR2 12, L"34"sv, L"56"s, L'0', clone_char(3, L'!')
 
 #define LARGE_WSTR L"123456789012345678901234567890!!!"s
-#define LARGE_WSTR2 123, L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', repeat_char(3, L'!')
+#define LARGE_WSTR2 123, L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', L"123", L"456"s, L"789"sv, L'0', clone_char(3, L'!')
 
 
 #define NAMED(val) std::pair(L#val, val)
@@ -155,7 +156,7 @@ protected:
 	template <typename TString, typename T>
 	TString CreateString(const T &arg)
 	{
-		if constexpr(std::is_same_v<T, repeat_char<typename TString::value_type>>)
+		if constexpr(std::is_same_v<T, clone_char<typename TString::value_type>>)
 			return TString(arg.first, arg.second);
 		else if constexpr(std::is_same_v<T, TString::value_type>)
 			return TString(1, arg);
@@ -282,12 +283,9 @@ protected:
 
 	}
 
-	template <typename TChar, typename T, typename T2, typename TMapped = decltype(CStringMaker<TChar>::ToStr(std::declval<T>()))>
+	template <typename TChar, typename T, typename T2, typename TMapped = decltype(CStringMaker<TChar>::ToStr<!std::is_void_v<T2>>(std::declval<T>()))>
 	void _TestStringMakerType()
 	{
-		if constexpr(!std::is_void_v<T2>)
-			CStringMaker<TChar>::VerifyType<true, T>();
-		
 		static_assert(std::is_same_v<std::decay_t<TMapped>, T2>);
 		static_assert(std::is_same_v<std::decay_t<TMapped>, std::decay_t<T>> == std::is_reference_v<TMapped>);
 	}
@@ -306,7 +304,7 @@ protected:
 	{
 		TestStringMakerType<TChar, std::basic_string_view<TChar>>();
 		TestStringMakerType<TChar, TChar>();
-		TestStringMakerType<TChar, repeat_char<TChar>>();
+		TestStringMakerType<TChar, clone_char<TChar>>();
 		TestStringMakerType<TChar, std::basic_string<TChar>>();
 		TestStringMakerType<TChar, TChar *, std::basic_string_view<TChar>>();
 		TestStringMakerType<TChar, const TChar *, std::basic_string_view<TChar>>();
