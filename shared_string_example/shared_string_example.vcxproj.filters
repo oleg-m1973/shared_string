@@ -26,5 +26,11 @@
     <ClInclude Include="..\shared_string.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\make_string.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="..\shared_string.natvis" />
   </ItemGroup>
 </Project>
