@@ -34,14 +34,13 @@ int main()
 		s.append(3, '!');
 	}) << std::endl;
 
-	shared_string s = make_shared_string(src1, ' ', src2, repeat_char(3, '!'), ' ', 2019);
+	shared_string s = make_shared_string(src1, ' ', src2, clone_char(3, '!'), ' ', 2019);
 	std::cout << "make_shared_string: " << s << std::endl;
 
 	cow_string cow = s;
 	cow.erase(src1.size(), src2.size() + 1);
 	std::cout << "cow_string: " << cow << std::endl;
 
-	make_shared_string(123) == "123";
 	while (!_kbhit());
 	return 0;
 }
