@@ -5,7 +5,6 @@
 #include "../cow_string.h"
 
 #include <iostream>
-#include <conio.h>
 
 int main()
 {
@@ -41,6 +40,5 @@ int main()
 	cow.erase(src1.size(), src2.size() + 1);
 	std::cout << "cow_string: " << cow << std::endl;
 
-	while (!_kbhit());
 	return 0;
 }
