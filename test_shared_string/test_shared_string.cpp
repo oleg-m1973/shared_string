@@ -283,9 +283,10 @@ protected:
 
 	}
 
-	template <typename TChar, typename T, typename T2, typename TMapped = decltype(CStringMaker<TChar>::ToStr<!std::is_void_v<T2>>(std::declval<T>()))>
+	template <typename TChar, typename T, typename T2>
 	void _TestStringMakerType()
 	{
+		using TMapped = decltype(CStringMaker<TChar>::ToStr<!std::is_void_v<T2>>(std::declval<T>()));
 		static_assert(std::is_same_v<std::decay_t<TMapped>, T2>);
 		static_assert(std::is_same_v<std::decay_t<TMapped>, std::decay_t<T>> == std::is_reference_v<TMapped>);
 	}
@@ -419,7 +420,7 @@ protected:
 		{
 			TString s2([&args...](auto &s)
 			{
-				(s.append(TMaker::ToStr(args)), ...);
+				(TMaker::Append(s, TMaker::ToStr(args)), ...);
 			});
 
 			TEST_VERIFY((s2 == s), L"shared_string_creator constructor");
@@ -430,7 +431,7 @@ protected:
 			TString s2([&sz, &args...](auto &s)
 			{
 				s.reserve(sz);
-				(s.append(TMaker::ToStr(args)), ...);
+				(TMaker::Append(s, TMaker::ToStr(args)), ...);
 			});
 
 			TEST_VERIFY((s2 == s), L"shared_string_creator constructor");
