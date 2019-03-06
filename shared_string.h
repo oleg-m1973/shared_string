@@ -569,7 +569,7 @@ public:
 			shared_string_creator(cap, sv())._swap(*this);
 	}
 
-	auto &append(const value_type * const str, const size_type sz)
+	constexpr auto &append(const value_type * const str, const size_type sz)
 	{
 		if (sz != 0)
 			traits_type::copy(_append(sz), str, sz);
@@ -577,32 +577,26 @@ public:
 		return *this;
 	}
 
-	auto &append(const string_view &sv)
+	constexpr auto &append(const string_view &sv)
 	{
 		return append(sv.data(), sv.size());
 	}
 
-	auto &append(value_type ch)
+	constexpr auto &append(value_type ch)
 	{
 		auto p = _append(1);
 		traits_type::assign(p[0], ch);
 		return *this;
 	}
 
-	auto &append(size_type n, value_type ch)
+	constexpr auto &append(size_type n, value_type ch)
 	{
 		traits_type::assign(_append(n), n, ch);
 		return *this;
 	}
 
-	auto &append(const clone_char<value_type> &chs)
-	{
-		traits_type::assign(_append(chs.first), chs.first, chs.second);
-		return *this;
-	}
-
 	template <typename T>
-	auto &operator +=(T &&val)
+	constexpr auto &operator +=(T &&val)
 	{
 		return append(std::forward<T>(val));
 	}

@@ -17,6 +17,11 @@ struct clone_char
 : std::pair<std::size_t, TChar>
 {
 	using std::pair<std::size_t, TChar>::pair;
+
+	constexpr auto size() const noexcept
+	{
+		return this->first;
+	}
 };
 
 template <typename TChar> clone_char(size_t, TChar)->clone_char<TChar>;
@@ -48,16 +53,13 @@ constexpr bool tuple_unique_types() noexcept
 		return (_tuple_index<Tuple, std::tuple_element_t<I, Tuple>, std::is_same, I + 1>() >= sz) && tuple_unique_types<Tuple, I + 1>();
 }
 
-template <typename TString, typename T, typename = std::void_t<>> struct CanAppend : std::false_type {};
-template <typename TString, typename T> struct CanAppend<TString, T, std::void_t<decltype(std::declval<TString>().append(std::declval<T>()))>> : std::true_type {};
-
 template <typename TChar>
 struct to_string_t
 : public std::basic_string<TChar>
 {
 	to_string_t() = delete;
 
-	template <typename T, typename = std::void_t<decltype(std::to_string(std::declval<T>()))>>
+	template <typename T, typename = decltype(std::to_string(std::declval<T>()))>
 	to_string_t(T &&val)
 	: std::basic_string<TChar>(to_string(std::forward<T>(val)))
 	{
@@ -78,10 +80,10 @@ struct to_string_t
 template <typename TChar, typename Traits = std::char_traits<TChar>>
 using TStringMakerTypes = std::tuple
 <
-	const std::basic_string_view<TChar, Traits>,
-	const std::basic_string<TChar, Traits>,
-	const TChar,
-	const clone_char<TChar>,
+	std::basic_string_view<TChar, Traits> &,
+	std::basic_string<TChar, Traits> &,
+	TChar &,
+	clone_char<TChar> &,
 	std::basic_string_view<TChar, Traits>,
 	to_string_t<TChar>
 >;
@@ -98,21 +100,21 @@ struct CStringMaker
 	using TypeMap = Types;
 	static_assert(tuple_unique_types<TypeMap>());
 
-	template <typename T2, typename T>
-	using map_type_t = std::conditional_t<std::is_const_v<T>, std::is_same<std::remove_const_t<T>, std::decay_t<T2>>, std::is_convertible<T2, T>>;
+	template <typename T, typename T2>
+	using map_type_t = std::conditional_t<std::is_reference_v<T2>, std::is_same<std::remove_reference_t<T2>, std::decay_t<T>>, std::is_convertible<T, T2>>;
 
 	template <bool Assert = true, typename T, typename T2 = tuple_find_t<TypeMap, T, map_type_t>>
-	static constexpr decltype(auto) ToStr(T&& val) noexcept(std::is_same_v<std::decay_t<T>, std::decay_t<T2>> || noexcept(T2(val)))
+	static constexpr decltype(auto) ToStr(T &&val) noexcept(std::is_reference_v<T2> || noexcept(std::decay_t<T2>(std::forward<T>(val))))
 	{
 		static_assert(!Assert || !std::is_void_v<T2>, "Can't make string from type");
-		if constexpr (std::is_same_v<std::decay_t<T>, std::decay_t<T2>>)
+		if constexpr (std::is_reference_v<T2>)
 			return std::forward<T>(val);
 		else
-			return T2(val);
+			return T2(std::forward<T>(val));
 	}
 
-	template <typename T, typename = std::void_t<decltype(std::declval<T>().size())>>
-	static constexpr size_type size(const T& val) noexcept(noexcept(val.size()))
+	template <typename T>
+	static constexpr auto size(const T& val) noexcept(noexcept(val.size())) -> decltype(std::declval<T>().size())
 	{
 		return val.size();
 	}
@@ -122,20 +124,10 @@ struct CStringMaker
 		return 1;
 	}
 
-	static constexpr size_type size(const to_string_t<value_type> &val) noexcept
+	template <typename TString, typename T, typename = std::enable_if_t<std::is_convertible_v<T, string_view>>>
+	static constexpr void Append(TString &s, T &&val) noexcept(noexcept(s.append(std::forward<T>(val))))
 	{
-		return val.size();
-	}
-
-	static constexpr size_type size(const clone_char<value_type> &val) noexcept
-	{
-		return val.first;
-	}
-
-	template <typename TString, typename T>
-	static constexpr void Append(TString &s, const T &val) noexcept(noexcept(s.append(val)))
-	{
-		s.append(val);
+		s.append(std::forward<T>(val));
 	}
 
 	template <typename TString>
@@ -144,32 +136,25 @@ struct CStringMaker
 		s.append(val.first, val.second);
 	}
 
-	template <typename TString, typename = std::enable_if_t<!CanAppend<TString, value_type>::value>>
-	static constexpr void Append(TString &s, value_type val) noexcept(noexcept(s.append(1, val)))
+	template <typename TString, typename T, typename = std::enable_if_t<std::is_same_v<T, value_type>>>
+	static constexpr void Append(TString &s, const T &val) noexcept(noexcept(s.append(1, val)))
 	{
 		s.append(1, val);
 	}
 
-	template <typename TString>
-	static constexpr void Append(TString &s) noexcept
+	template <typename TString, typename T>
+	static constexpr auto Append(TString &s, T &&val) noexcept(noexcept(val.append_to(s))) -> decltype(std::declval<T>().append_to(std::declval<TString &>()))
 	{
-	}
-
-	template <typename TString, typename T, typename... TT>
-	static constexpr void Append(TString &s, const T &val, const TT&... vals) noexcept(noexcept(Append(s, val)) && noexcept(Append(s, vals...)))
-	{
-		Append(s, val);
-		Append(s, vals...);
+		return val.append_to(s);
 	}
 };
-
 
 template <typename TString, typename TMaker = CStringMaker<typename TString::value_type, typename TString::traits_type>, typename... TT>
 auto _make_string(TT&&... vals)
 {
 	TString res;
 	res.reserve((TMaker::size(vals) + ... + 0));
-	TMaker::Append(res, std::forward<TT>(vals)...);
+	(TMaker::Append(res, std::forward<TT>(vals)), ...);
 	return res;
 }
 

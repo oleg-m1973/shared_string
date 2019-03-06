@@ -50,7 +50,7 @@ public:
 
 	constexpr basic_cow_string &append(const size_type n, const value_type ch)
 	{
-		shared_string(_maker, *this, repeat_char(n, ch)).swap(*this);
+		shared_string(_maker, *this, clone_char(n, ch)).swap(*this);
 		return *this;
 	}
 
@@ -78,7 +78,7 @@ public:
 	constexpr basic_cow_string &insert(size_type pos, size_type n, value_type ch)
 	{
 		const auto s2 = substr2(pos);
-		shared_string(_maker, s2.first, repeat_char(n, ch), s2.second).swap(*this);
+		shared_string(_maker, s2.first, clone_char(n, ch), s2.second).swap(*this);
 		return *this;
 	}
 
