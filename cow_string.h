@@ -23,8 +23,8 @@ public:
 	using string_maker = TMaker;
 
 	using shared_string = basic_shared_string<TChar, Traits>;
-	using shared_string::size_type;
-	using shared_string::value_type;
+	using size_type = typename shared_string::size_type;
+	using value_type = typename shared_string::value_type;
 	using shared_string::string_view;
 	using shared_string::npos;
 

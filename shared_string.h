@@ -40,7 +40,7 @@ struct CSmallStringOpt
 	static constexpr size_type sso_size = ((sizeof(TLargeStr) - sizeof(TSmallSize)) / sizeof(value_type)) - 1;
 	static constexpr TSmallSize ZeroSmallSize = 0x01;
 	static constexpr TSmallMask SmallMask = 0x01;
-
+		
 	CSmallStringOpt() = default;
 	
 	constexpr CSmallStringOpt(nullptr_t) noexcept
@@ -135,36 +135,13 @@ struct CSmallStringOpt
 		TSmallMask m_mask;
 	};
 
+	static_assert(std::is_trivially_constructible_v<TLargeStr>);
+	static_assert(std::is_trivially_destructible_v<TLargeStr>);
+	static_assert(std::is_trivially_copyable_v<TLargeStr>);
+
 	static_assert(sizeof(m_small) <= sizeof(m_large));
 	static_assert(sizeof(m_mask) <= sizeof(m_large));
 	static_assert(sizeof(m_mask) == sizeof(value_type) * 2);
-};
-
-class CRefCounter
-{
-public:
-	bool Capture() noexcept
-	{
-		auto cnt = m_cnt.load(std::memory_order_acquire);
-		while (cnt != 0)
-			if (m_cnt.compare_exchange_weak(cnt, cnt + 1, std::memory_order_acquire))
-				return true;
-
-		return false;
-	}
-
-	[[nodiscard]] bool Release() noexcept
-	{
-		return m_cnt.fetch_sub(1, std::memory_order_release) == 1; 
-	}
-
-	auto use_count() const noexcept
-	{
-		return m_cnt.load(std::memory_order_relaxed);
-	}
-
-protected:
-	volatile std::atomic<size_t> m_cnt{1};
 };
 
 template <typename TChar>
@@ -174,8 +151,28 @@ struct CSharedLargeStr
 	using size_type = std::size_t;
 
 	struct CRefStr
-	: public CRefCounter
 	{
+		bool Capture() noexcept
+		{
+			auto refs = m_refs.load(std::memory_order_acquire);
+			while (refs != 0)
+				if (m_refs.compare_exchange_weak(refs, refs + 1, std::memory_order_acquire))
+					return true;
+
+			return false;
+		}
+
+		[[nodiscard]] bool Release() const noexcept
+		{
+			return m_refs.fetch_sub(1, std::memory_order_release) == 1;
+		}
+
+		auto use_count() const noexcept
+		{
+			return m_refs.load(std::memory_order_relaxed);
+		}
+
+		mutable volatile std::atomic<size_t> m_refs{1};
 		value_type m_data[1];
 	};
 	
@@ -186,6 +183,11 @@ struct CSharedLargeStr
 		return m_str = m_refs->m_data;
 	}
 	
+	bool Capture() const noexcept
+	{
+		return m_refs->Capture();
+	}
+
 	void Destroy() noexcept
 	{
 		std::destroy_at(m_refs);
@@ -202,6 +204,17 @@ struct CSharedLargeStr
 #endif 
 		}
 	}
+
+	auto *data() noexcept
+	{
+		return m_str;
+	}
+
+	auto *data() const noexcept
+	{
+		return m_str;
+	}
+
 	constexpr size_type size() const noexcept
 	{
 		return m_sz;
@@ -218,13 +231,20 @@ struct CSharedLargeStr
 };
 
 template <typename TChar, typename Traits> class shared_string_creator;
+#define SHARED_STRING_CMP \
+	TS_ITEM(==, ==) \
+	TS_ITEM(!=, !=) \
+	TS_ITEM(<=, >=) \
+	TS_ITEM(>=, <=) \
+	TS_ITEM(<, >) \
+	TS_ITEM(>, <) \
 
-template <typename TChar = char, typename Traits = std::char_traits<TChar>>
+template <typename TChar = char, typename Traits = std::char_traits<TChar>, typename TLargeStr = CSharedLargeStr<TChar>>
 class basic_shared_string
-: protected CSmallStringOpt<CSharedLargeStr<TChar>>
+: protected CSmallStringOpt<TLargeStr>
 {
 protected:
-	using TSmallStringOpt = CSmallStringOpt<CSharedLargeStr<TChar>>;
+	using TSmallStringOpt = CSmallStringOpt<TLargeStr>;
 		
 	using TSmallStringOpt::m_small;
 	using TSmallStringOpt::m_large;
@@ -236,6 +256,7 @@ public:
 	using traits_type = Traits;
 	using value_type = TChar;
 	using size_type = std::size_t;
+
 	using difference_type = std::ptrdiff_t;
 	
 	using const_pointer = const value_type *;
@@ -258,6 +279,7 @@ public:
 	using TSmallStringOpt::sso_size;
 	using TSmallStringOpt::empty;
 	using TSmallStringOpt::is_small;
+	
 
 	constexpr basic_shared_string() noexcept
 	: TSmallStringOpt(nullptr)
@@ -337,7 +359,7 @@ public:
 	{
 		if (src.is_small())
 			m_small = src.m_small;
-		else if (src.m_large.m_refs->Capture())
+		else if (src.m_large.Capture())
 			m_large = src.m_large;
 		else
 			SetEmpty();
@@ -356,7 +378,7 @@ public:
 
 	constexpr string_view sv() const noexcept
 	{
-		return is_small()? string_view(m_small.m_str, m_small.size()): string_view(m_large.m_str, m_large.size());
+		return is_small()? string_view(m_small.m_str, m_small.size()): string_view(m_large.data(), m_large.size());
 	}
 
 	constexpr const_pointer c_str() const noexcept
@@ -366,7 +388,7 @@ public:
 	
 	constexpr const_pointer data() const noexcept
 	{
-		return is_small()? m_small.m_str: m_large.m_str;
+		return is_small()? m_small.m_str: m_large.data();
 	}
 
 	constexpr size_t size() const noexcept
@@ -475,6 +497,10 @@ public:
 		return substr2(0, pos, pos, npos);
 	}
 
+#define TS_ITEM(op, nop) constexpr bool operator op(const basic_shared_string &s) const noexcept {return compare(s) op 0;}
+	SHARED_STRING_CMP
+#undef TS_ITEM
+
 protected:
 	struct CAppendHelper
 	{
@@ -520,7 +546,7 @@ protected:
 
 	constexpr value_type *data() noexcept
 	{
-		return is_small()? m_small.m_str: m_large.m_str;
+		return is_small()? m_small.m_str: m_large.data();
 	}
 
 	constexpr value_type *small_data() noexcept
@@ -535,7 +561,7 @@ protected:
 
 	constexpr value_type *large_data() noexcept
 	{
-		return m_large.m_str;
+		return m_large.data();
 	}
 
 	constexpr size_type large_size() const noexcept
@@ -647,19 +673,13 @@ protected:
 	size_t m_cap = sso_size;
 };
 
-#define SHARED_STRING_CMP \
-	TS_ITEM(==, ==) \
-	TS_ITEM(!=, !=) \
-	TS_ITEM(<=, >=) \
-	TS_ITEM(>=, <=) \
-	TS_ITEM(<, >) \
-	TS_ITEM(>, <) \
 
 #define TS_ITEM(op, nop) \
-	template <typename TChar, typename Traits, typename T> constexpr bool operator op(const basic_shared_string<TChar, Traits> &s1, const T &s2) noexcept {return s1.compare(s2) op 0;} \
-	template <typename T, typename TChar, typename Traits, typename = std::enable_if_t<!std::is_base_of_v<basic_shared_string<TChar, Traits>, T> && !std::is_same_v<basic_shared_string<TChar, Traits>, T>>> \
-	constexpr bool operator op(const T &s1, const basic_shared_string<TChar, Traits> &s2) noexcept {return s2.compare(s1) nop 0;} \
-	
+	template <typename TChar, typename Traits, typename TLargeStr, typename T> constexpr bool operator op(const basic_shared_string<TChar, Traits, TLargeStr> &s1, const T &s2) noexcept {return s1.compare(s2) op 0;} \
+	template <typename T, typename TChar, typename Traits, typename TLargeStr, typename = std::enable_if_t<!std::is_base_of_v<basic_shared_string<TChar, Traits, TLargeStr>, T> && !std::is_same_v<basic_shared_string<TChar, Traits, TLargeStr>, T>>> \
+	constexpr bool operator op(const T &s1, const basic_shared_string<TChar, Traits, TLargeStr> &s2) noexcept {return s2.compare(s1) nop 0;} \
+
+
 SHARED_STRING_CMP
 
 #undef TS_ITEM

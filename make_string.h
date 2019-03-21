@@ -26,21 +26,34 @@ struct clone_char
 
 template <typename TChar> clone_char(size_t, TChar)->clone_char<TChar>;
 
-template <typename Tuple, typename T, template <typename, typename> typename Pred = std::is_same, size_t I = 0>
+template <template <typename...> typename Pred>
+struct type_traits_t
+{
+	template <typename... TT>
+	static constexpr inline auto value = Pred<TT...>::value;
+
+	template <typename... TT>
+	constexpr auto operator()(TT&&... args) noexcept
+	{
+		return Pred<std::decay_t<TT>...>()(std::forward<TT>(args)...);
+	}
+};
+
+template <typename Tuple, typename T, typename Pred = type_traits_t<std::is_same>, size_t I = 0>
 constexpr size_t _tuple_index() noexcept
 {
 	if constexpr (I >= std::tuple_size_v<Tuple>)
 		return I;
-	else if constexpr (Pred<T, std::tuple_element_t<I, Tuple>>::value)
+	else if constexpr (Pred::template value<T, std::tuple_element_t<I, Tuple>>)
 		return I;
 	else
 		return _tuple_index<Tuple, T, Pred, I + 1>();
 }
 
-template <typename Tuple, typename T, template <typename, typename> typename Pred = std::is_same, typename NotFound = void>
+template <typename Tuple, typename T, typename Pred = type_traits_t<std::is_same>, typename NotFound = void>
 using tuple_find_t = std::tuple_element_t<_tuple_index<Tuple, T, Pred>(), decltype(std::tuple_cat(std::declval<Tuple>(), std::declval<std::tuple<NotFound>>()))>;
 
-template <typename Tuple, typename T, template <typename, typename> typename Pred = std::is_same>
+template <typename Tuple, typename T, typename Pred = type_traits_t<std::is_same>>
 static constexpr bool tuple_has = _tuple_index<Tuple, T, Pred>() < std::tuple_size_v<Tuple>;
 
 template <typename Tuple, size_t I = 0>
@@ -50,7 +63,7 @@ constexpr bool tuple_unique_types() noexcept
 	if constexpr (I < sz)
 		return true;
 	else
-		return (_tuple_index<Tuple, std::tuple_element_t<I, Tuple>, std::is_same, I + 1>() >= sz) && tuple_unique_types<Tuple, I + 1>();
+		return (_tuple_index<Tuple, std::tuple_element_t<I, Tuple>, type_traits_t<std::is_same>, I + 1>() >= sz) && tuple_unique_types<Tuple, I + 1>();
 }
 
 template <typename TChar>
@@ -103,7 +116,7 @@ struct CStringMaker
 	template <typename T, typename T2>
 	using map_type_t = std::conditional_t<std::is_reference_v<T2>, std::is_same<std::remove_reference_t<T2>, std::decay_t<T>>, std::is_convertible<T, T2>>;
 
-	template <bool Assert = true, typename T, typename T2 = tuple_find_t<TypeMap, T, map_type_t>>
+	template <bool Assert = true, typename T, typename T2 = tuple_find_t<TypeMap, T, type_traits_t<map_type_t>>>
 	static constexpr decltype(auto) ToStr(T &&val) noexcept(std::is_reference_v<T2> || noexcept(std::decay_t<T2>(std::forward<T>(val))))
 	{
 		static_assert(!Assert || !std::is_void_v<T2>, "Can't make string from type");
