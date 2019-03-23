@@ -39,7 +39,4 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
-  <ItemGroup>
-    <Natvis Include="shared_string.natvis" />
-  </ItemGroup>
 </Project>

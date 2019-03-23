@@ -171,11 +171,6 @@
     </ClCompile>
     <ClCompile Include="test_shared_string.cpp" />
   </ItemGroup>
-  <ItemGroup>
-    <Natvis Include="shared_string.natvis">
-      <SubType>Designer</SubType>
-    </Natvis>
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
