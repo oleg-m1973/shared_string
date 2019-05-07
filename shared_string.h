@@ -21,7 +21,7 @@ namespace SHARED_STRING_NAMESPACE {
 #endif 
 
 #ifdef SHARED_STRING_TEST
-static size_t _SharedStringLeaks = 0;
+static std::atomic<size_t> _SharedStringLeaks = 0;
 #endif
 
 template <typename TLargeStr>
