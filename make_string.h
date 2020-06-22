@@ -42,9 +42,9 @@ struct type_traits_t
 template <typename Tuple, typename T, typename Pred = type_traits_t<std::is_same>, size_t I = 0>
 constexpr size_t _tuple_index() noexcept
 {
-	if constexpr (I >= std::tuple_size_v<Tuple>)
+	if constexpr(I >= std::tuple_size_v<Tuple>)
 		return I;
-	else if constexpr (Pred::template value<T, std::tuple_element_t<I, Tuple>>)
+	else if constexpr(Pred::template value<T, std::tuple_element_t<I, Tuple>>)
 		return I;
 	else
 		return _tuple_index<Tuple, T, Pred, I + 1>();
@@ -60,7 +60,7 @@ template <typename Tuple, size_t I = 0>
 constexpr bool tuple_unique_types() noexcept
 {
 	constexpr auto sz = std::tuple_size_v<Tuple>;
-	if constexpr (I < sz)
+	if constexpr(I < sz)
 		return true;
 	else
 		return (_tuple_index<Tuple, std::tuple_element_t<I, Tuple>, type_traits_t<std::is_same>, I + 1>() >= sz) && tuple_unique_types<Tuple, I + 1>();
@@ -81,9 +81,9 @@ struct to_string_t
 	template <typename T>
 	static constexpr auto to_string(T &&val)
 	{
-		if constexpr (std::is_same_v<TChar, char>)
+		if constexpr(std::is_same_v<TChar, char>)
 			return std::to_string(std::forward<T>(val));
-		else if constexpr (std::is_same_v<TChar, wchar_t>)
+		else if constexpr(std::is_same_v<TChar, wchar_t>)
 			return std::to_wstring(std::forward<T>(val));
 		else
 			return std::forward<T>(val);
@@ -120,7 +120,7 @@ struct CStringMaker
 	static constexpr decltype(auto) ToStr(T &&val) noexcept(std::is_reference_v<T2> || noexcept(std::decay_t<T2>(std::forward<T>(val))))
 	{
 		static_assert(!Assert || !std::is_void_v<T2>, "Can't make string from type");
-		if constexpr (std::is_reference_v<T2>)
+		if constexpr(std::is_reference_v<T2>)
 			return std::forward<T>(val);
 		else
 			return T2(std::forward<T>(val));

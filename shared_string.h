@@ -178,7 +178,7 @@ struct CSharedLargeStr
 	
 	value_type *Init(const size_type sz, const size_t cap)
 	{
-		m_refs = new (new std::byte[sizeof(CRefStr) + (cap * sizeof(value_type))]) CRefStr(); //-V119
+		m_refs = new (new std::byte[sizeof(CRefStr) + (cap * sizeof(value_type))]) CRefStr; //-V119
 		m_sz = sz;
 		return m_str = m_refs->m_data;
 	}
