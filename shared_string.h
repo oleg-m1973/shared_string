@@ -406,7 +406,7 @@ public:
 		return *data();
 	}
 
-	const_reference operator[](size_t pos) const noexcept
+	constexpr const_reference operator[](size_t pos) const noexcept
 	{
 		return data()[pos];
 	}
